@@ -184,6 +184,237 @@
           "report_partial_completion": true
         }
       },
+      "paired_business_work_item_policies": {
+        "enabled": true,
+        "authorized_at": "2026-10-02",
+        "trigger": {
+          "field_key": "field_5e764e",
+          "match_mode": "each_matching_option",
+          "refresh_option_ids_before_write": true
+        },
+        "policies": {
+          "t3_content_maintenance": {
+            "trigger_option": {
+              "option_id_snapshot": "e3246afe8",
+              "option_name": "T3客户代运营请求-内容维护"
+            },
+            "target_work_item_type": {
+              "type_key": "67df87a8baf45c9c247ba778",
+              "api_name": "nr",
+              "display_name": "内容维护",
+              "refresh_before_write": true
+            },
+            "templates": {
+              "default": {
+                "template_id_snapshot": "2769517",
+                "template_name": "默认内容维护类型",
+                "use_when": "普通内容制作、修改或代运营请求"
+              },
+              "qa": {
+                "template_id_snapshot": "5477849",
+                "template_name": "QA单独流程类型",
+                "use_when": "员工明确说明 QA 单独流程"
+              },
+              "refresh_before_write": true
+            },
+            "relation_fields": {
+              "customer_service_to_target": {
+                "field_key": "field_e48264",
+                "field_name": "内容维护",
+                "related_type_key": "67df87a8baf45c9c247ba778"
+              },
+              "target_to_customer_service": {
+                "field_key": "field_7e7ab1",
+                "field_name": "客服工单",
+                "related_type_key": "6886d47112cff2ae4ae279e3"
+              },
+              "refresh_before_write": true
+            },
+            "field_mapping": [
+              {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+              {"target_field_key": "description", "target_field_name": "任务描述", "source": "customer_service.description"},
+              {"target_field_key": "priority", "target_field_name": "优先级", "source": "customer_service.field_636ce3_via_star_to_q_mapping"},
+              {"target_field_key": "field_1e7f65", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
+              {"target_field_key": "field_7e7ab1", "target_field_name": "客服工单", "source": "created_customer_service_id"},
+              {"target_field_key": "field_581e1d", "target_field_name": "附件", "source": "content_semantic_bundle_attachments"}
+            ],
+            "required_business_values": [
+              "confirmation_required_boolean",
+              "unique_customer_crm",
+              "producer_role_owners_from_trusted_chat_name"
+            ],
+            "authorized_priority_mapping": [
+              {"source_option_id_snapshot": "fvniru481", "source_option_name": "🌟🌟🌟🌟", "target_option_id_snapshot": "option_1", "target_option_name": "Q0 阻断型立刻处理"},
+              {"source_option_id_snapshot": "36z6f1hh4", "source_option_name": "🌟🌟🌟", "target_option_id_snapshot": "option_3", "target_option_name": "Q1 紧急当日必交"},
+              {"source_option_id_snapshot": "jwlcxzf70", "source_option_name": "🌟🌟", "target_option_id_snapshot": "option_2", "target_option_name": "Q2 标准任务"},
+              {"source_option_id_snapshot": "2b9_nvlzu", "source_option_name": "🌟", "target_option_id_snapshot": "i74n8tugh", "target_option_name": "Q3 非紧急任务"}
+            ],
+            "forbidden_inference": [
+              "current_login_user_to_producer",
+              "missing_confirmation_to_false"
+            ],
+            "dedupe": {
+              "scope_type_key": "67df87a8baf45c9c247ba778",
+              "exact_keys": ["source_message_id", "related_customer_service_id", "customer_crm_id", "normalized_name"],
+              "similar_title_requires_user_choice": true,
+              "reuse_exact_match_instead_of_create": true
+            }
+          },
+          "t5_demand_pool": {
+            "trigger_option": {
+              "option_id_snapshot": "0p5j22sul",
+              "option_name": "T5功能建议/改进类-需求"
+            },
+            "target_work_item_type": {
+              "type_key": "67ee41797f03010701cea7c6",
+              "api_name": "xqc",
+              "display_name": "需求池",
+              "refresh_before_write": true
+            },
+            "templates": {
+              "regular": {
+                "template_id_snapshot": "2823040",
+                "template_name": "常规评估规划流程类型",
+                "use_when": "普通功能建议或改进"
+              },
+              "paid_development": {
+                "template_id_snapshot": "3012664",
+                "template_name": "付费开发评估流程类型",
+                "use_when": "明确付费开发、有偿开发或需要报价"
+              },
+              "design_task": {
+                "template_id_snapshot": "3310913",
+                "template_name": "综合设计任务流程",
+                "use_when": "明确独立 UI/UX 或综合设计任务"
+              },
+              "refresh_before_write": true
+            },
+            "relation_fields": {
+              "customer_service_to_target": {
+                "field_key": "field_e5e3aa",
+                "field_name": "需求池",
+                "related_type_key": "67ee41797f03010701cea7c6"
+              },
+              "target_to_customer_service": {
+                "field_key": "field_9fc721",
+                "field_name": "客服工单",
+                "related_type_key": "6886d47112cff2ae4ae279e3"
+              },
+              "refresh_before_write": true
+            },
+            "field_mapping": [
+              {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+              {"target_field_key": "description", "target_field_name": "描述", "source": "customer_service.description_and_expected_behavior"},
+              {"target_field_key": "field_5cd576", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
+              {"target_field_key": "field_9fc721", "target_field_name": "客服工单", "source": "created_customer_service_id"},
+              {"target_field_key": "field_62493b", "target_field_name": "附件", "source": "demand_semantic_bundle_attachments"}
+            ],
+            "optional_fields_without_default": ["priority"],
+            "forbidden_inference": ["customer_service_stars_to_demand_priority"],
+            "dedupe": {
+              "scope_type_key": "67ee41797f03010701cea7c6",
+              "exact_keys": ["source_message_id", "related_customer_service_id", "customer_crm_id", "normalized_name"],
+              "similar_title_requires_user_choice": true,
+              "reuse_exact_match_instead_of_create": true
+            }
+          },
+          "risk_control": {
+            "trigger_option": {
+              "option_id_snapshot": "v_l2t4wmf",
+              "option_name": "风控处理"
+            },
+            "target_work_item_type": {
+              "type_key": "6a7bbb6b50cf1f8304fedf79",
+              "api_name": "fklx",
+              "display_name": "风控处理",
+              "refresh_before_write": true
+            },
+            "templates": {
+              "chargeback": {
+                "template_id_snapshot": "10178724",
+                "template_name": "Chargeback 处理流程",
+                "use_when": "明确 Chargeback 或拒付"
+              },
+              "daily_risk": {
+                "template_id_snapshot": "10179492",
+                "template_name": "日常风控跟进流程",
+                "use_when": "其他已明确的日常风控事项"
+              },
+              "refresh_before_write": true
+            },
+            "relation_fields": {
+              "customer_service_to_target": {
+                "field_key": "field_87d289",
+                "field_name": "风控处理",
+                "related_type_key": "6a7bbb6b50cf1f8304fedf79"
+              },
+              "target_to_customer_service": {
+                "field_key": "field_4bf86b",
+                "field_name": "客服工单",
+                "related_type_key": "6886d47112cff2ae4ae279e3"
+              },
+              "refresh_before_write": true
+            },
+            "field_mapping": [
+              {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+              {"target_field_key": "field_09ca04", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
+              {"target_field_key": "field_4bf86b", "target_field_name": "客服工单", "source": "created_customer_service_id"},
+              {"target_field_key": "field_2c62ea", "target_field_name": "Pisell 订单号", "source": "explicit_order_number"},
+              {"target_field_key": "field_bcdfab", "target_field_name": "Chargeback 金额", "source": "explicit_chargeback_amount"},
+              {"target_field_key": "field_85f9ea", "target_field_name": "风控来源", "source": "explicit_risk_source"},
+              {"target_field_key": "field_6e633f", "target_field_name": "Chargeback 原因", "source": "explicit_chargeback_reason"},
+              {"target_field_key": "field_e24bc3", "target_field_name": "MW 通知截图", "source": "risk_notice_semantic_bundle_attachment"}
+            ],
+            "required_create_role": {
+              "role_key_snapshot": "role_b5881d",
+              "role_name": "当前处理的负责人",
+              "must_resolve_explicitly": true,
+              "refresh_before_write": true
+            },
+            "chargeback_required_business_values": [
+              "order_number",
+              "chargeback_amount",
+              "risk_source",
+              "chargeback_reason",
+              "mw_or_risk_notice_evidence",
+              "current_handler"
+            ],
+            "forbidden_inference": [
+              "generic_chat_screenshot_to_mw_notice",
+              "current_login_user_to_current_handler",
+              "placeholder_chargeback_facts"
+            ],
+            "workflow_readiness_profile": "workspace/configuration/workflow-readiness.json#risk_control_chargeback",
+            "dedupe": {
+              "scope_type_key": "6a7bbb6b50cf1f8304fedf79",
+              "exact_keys": ["source_message_id", "related_customer_service_id", "order_number", "chargeback_amount", "normalized_name"],
+              "similar_title_requires_user_choice": true,
+              "reuse_exact_match_instead_of_create": true
+            }
+          }
+        },
+        "write_sequence": [
+          "validate_customer_service_and_each_target_draft",
+          "dedupe_each_target_type_independently",
+          "create_and_verify_customer_service",
+          "reuse_or_create_and_verify_each_ready_target",
+          "write_and_verify_each_customer_service_to_target_relation",
+          "archive_and_verify_each_item_attachments",
+          "check_each_item_current_node_readiness"
+        ],
+        "reused_target_policy": {
+          "write_customer_service_outbound_relation": true,
+          "update_historical_target_without_specific_authorization": false
+        },
+        "partial_failure_policy": {
+          "preserve_created_ids": true,
+          "allow_independent_ready_targets_to_continue": true,
+          "never_recreate_bundle": true,
+          "resume_only_missing_steps": true,
+          "report_partial_completion": true
+        },
+        "handoff_to_yoko": false
+      },
       "handoff_to_yoko": false,
       "verified_test_work_item_id": "7126688803",
       "verified_template_version": "66",

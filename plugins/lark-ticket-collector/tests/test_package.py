@@ -328,6 +328,118 @@ class PackageContractTests(unittest.TestCase):
         )
         self.assertTrue(policy["partial_failure_policy"]["never_recreate_bundle"])
 
+    def test_customer_service_business_pairings_target_only_authorized_types(self) -> None:
+        routing = read_json("workspace/configuration/work-item-routing.json")
+        customer_service = routing["types"]["customer_service"]
+        policies = customer_service["paired_business_work_item_policies"]
+        self.assertTrue(policies["enabled"])
+        self.assertEqual(policies["trigger"]["field_key"], "field_5e764e")
+        self.assertEqual(policies["trigger"]["match_mode"], "each_matching_option")
+        self.assertEqual(
+            {
+                policy["trigger_option"]["option_name"]:
+                policy["target_work_item_type"]["type_key"]
+                for policy in policies["policies"].values()
+            },
+            {
+                "T3客户代运营请求-内容维护": "67df87a8baf45c9c247ba778",
+                "T5功能建议/改进类-需求": "67ee41797f03010701cea7c6",
+                "风控处理": "6a7bbb6b50cf1f8304fedf79",
+            },
+        )
+        self.assertFalse(policies["handoff_to_yoko"])
+        self.assertTrue(
+            policies["partial_failure_policy"]["resume_only_missing_steps"]
+        )
+
+    def test_customer_service_business_pairings_have_verified_bidirectional_relations(self) -> None:
+        policies = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]["policies"]
+        expected = {
+            "t3_content_maintenance": ("field_e48264", "field_7e7ab1"),
+            "t5_demand_pool": ("field_e5e3aa", "field_9fc721"),
+            "risk_control": ("field_87d289", "field_4bf86b"),
+        }
+        for policy_key, field_keys in expected.items():
+            relations = policies[policy_key]["relation_fields"]
+            self.assertEqual(
+                relations["customer_service_to_target"]["field_key"],
+                field_keys[0],
+            )
+            self.assertEqual(
+                relations["target_to_customer_service"]["field_key"],
+                field_keys[1],
+            )
+            self.assertTrue(relations["refresh_before_write"])
+
+    def test_content_pairing_maps_priority_and_requires_confirmation_and_producer(self) -> None:
+        content = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]["policies"]["t3_content_maintenance"]
+        mapped = {field["target_field_key"] for field in content["field_mapping"]}
+        self.assertGreaterEqual(
+            mapped,
+            {"name", "description", "priority", "field_1e7f65", "field_7e7ab1", "field_581e1d"},
+        )
+        self.assertEqual(
+            set(content["required_business_values"]),
+            {
+                "confirmation_required_boolean",
+                "unique_customer_crm",
+                "producer_role_owners_from_trusted_chat_name",
+            },
+        )
+        self.assertEqual(
+            {
+                item["source_option_name"]: item["target_option_name"]
+                for item in content["authorized_priority_mapping"]
+            },
+            {
+                "🌟🌟🌟🌟": "Q0 阻断型立刻处理",
+                "🌟🌟🌟": "Q1 紧急当日必交",
+                "🌟🌟": "Q2 标准任务",
+                "🌟": "Q3 非紧急任务",
+            },
+        )
+        self.assertIn(
+            "missing_confirmation_to_false", content["forbidden_inference"]
+        )
+
+    def test_demand_and_risk_pairings_preserve_target_specific_requirements(self) -> None:
+        policies = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]["policies"]
+        demand = policies["t5_demand_pool"]
+        self.assertEqual(
+            {
+                template["template_id_snapshot"]
+                for key, template in demand["templates"].items()
+                if key != "refresh_before_write"
+            },
+            {"2823040", "3012664", "3310913"},
+        )
+        self.assertIn(
+            "customer_service_stars_to_demand_priority",
+            demand["forbidden_inference"],
+        )
+
+        risk = policies["risk_control"]
+        self.assertEqual(
+            risk["required_create_role"]["role_name"],
+            "当前处理的负责人",
+        )
+        self.assertTrue(risk["required_create_role"]["must_resolve_explicitly"])
+        self.assertEqual(
+            set(risk["chargeback_required_business_values"]),
+            {
+                "order_number",
+                "chargeback_amount",
+                "risk_source",
+                "chargeback_reason",
+                "mw_or_risk_notice_evidence",
+                "current_handler",
+            },
+        )
+        self.assertEqual(
+            risk["workflow_readiness_profile"],
+            "workspace/configuration/workflow-readiness.json#risk_control_chargeback",
+        )
+
     def test_only_blocking_issues_are_handed_to_yoko(self) -> None:
         routing_types = read_json("workspace/configuration/work-item-routing.json")["types"]
         catalog_types = read_json("workspace/configuration/work-item-catalog.json")["types"]
