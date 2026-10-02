@@ -7,6 +7,30 @@ export interface StoredMessage {
   createdAt: number;
 }
 
+export type DraftAction = "none" | "open" | "update" | "close";
+
+export interface DraftMemoryUpdate {
+  action: DraftAction;
+  ticketType?: string;
+  summary?: string;
+  missingFields: string[];
+  workItemIds: string[];
+}
+
+export interface DraftSnapshot {
+  id: string;
+  conversationKey: string;
+  chatId: string;
+  senderId: string;
+  ticketType?: string;
+  summary: string;
+  missingFields: string[];
+  workItemIds: string[];
+  resources: DownloadedResource[];
+  updatedAt: number;
+  expiresAt: number;
+}
+
 export interface DownloadedResource {
   type: "image" | "file" | "audio" | "video" | "sticker";
   fileKey: string;
@@ -44,11 +68,13 @@ export interface InboundEnvelope {
 export interface AgentRequest {
   envelope: InboundEnvelope;
   history: StoredMessage[];
+  activeDraft?: DraftSnapshot;
   resourceRoot: string;
 }
 
 export interface AgentResult {
   text: string;
+  draft: DraftMemoryUpdate;
   diagnostics: string[];
 }
 

@@ -27,6 +27,9 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.lark.handoffChatId, "oc_yoko");
   assert.equal(config.health.port, 0);
   assert.equal(config.codex.timeoutMs, 600_000);
+  assert.equal(config.limits.maxHistoryMessages, 12);
+  assert.equal(config.limits.maxHistoryAgeMs, 30 * 24 * 60 * 60_000);
+  assert.equal(config.limits.draftTtlMs, 7 * 24 * 60 * 60_000);
   assert.match(config.codex.workspace, /workspace$/);
 });
 

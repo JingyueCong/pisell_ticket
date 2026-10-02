@@ -1,15 +1,88 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import Database from "better-sqlite3";
 
-import type { DownloadedResource, MessageRole, StoredMessage } from "./types.js";
+import type {
+  DownloadedResource,
+  DraftMemoryUpdate,
+  DraftSnapshot,
+  MessageRole,
+  StoredMessage,
+} from "./types.js";
 
 type MessageStatus = "processing" | "completed" | "failed";
 
 interface MessageRow {
   status: MessageStatus;
   updated_at: number;
+}
+
+interface DraftRow {
+  id: string;
+  conversation_key: string;
+  chat_id: string;
+  sender_id: string;
+  ticket_type: string | null;
+  summary: string;
+  missing_fields_json: string;
+  work_item_ids_json: string;
+  resources_json: string;
+  updated_at: number;
+  expires_at: number;
+}
+
+function parseStringArray(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseResources(value: string): DownloadedResource[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is DownloadedResource =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as { fileKey?: unknown }).fileKey === "string" &&
+        typeof (item as { type?: unknown }).type === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function mergeResources(
+  existing: DownloadedResource[],
+  incoming: DownloadedResource[],
+): DownloadedResource[] {
+  const merged = new Map(existing.map((resource) => [resource.fileKey, resource]));
+  for (const resource of incoming) merged.set(resource.fileKey, resource);
+  return [...merged.values()].slice(-50);
+}
+
+function draftSnapshot(row: DraftRow): DraftSnapshot {
+  return {
+    id: row.id,
+    conversationKey: row.conversation_key,
+    chatId: row.chat_id,
+    senderId: row.sender_id,
+    ...(row.ticket_type ? { ticketType: row.ticket_type } : {}),
+    summary: row.summary,
+    missingFields: parseStringArray(row.missing_fields_json),
+    workItemIds: parseStringArray(row.work_item_ids_json),
+    resources: parseResources(row.resources_json),
+    updatedAt: row.updated_at,
+    expiresAt: row.expires_at,
+  };
 }
 
 export class BridgeStore {
@@ -52,6 +125,25 @@ export class BridgeStore {
 
       CREATE INDEX IF NOT EXISTS idx_conversation_messages_recent
         ON conversation_messages(conversation_key, id DESC);
+
+      CREATE TABLE IF NOT EXISTS ticket_drafts (
+        id TEXT PRIMARY KEY,
+        conversation_key TEXT NOT NULL UNIQUE,
+        chat_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('open', 'closed', 'expired')),
+        ticket_type TEXT,
+        summary TEXT NOT NULL,
+        missing_fields_json TEXT NOT NULL,
+        work_item_ids_json TEXT NOT NULL,
+        resources_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ticket_drafts_active
+        ON ticket_drafts(chat_id, sender_id, status, updated_at DESC);
 
       CREATE TABLE IF NOT EXISTS message_resources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,16 +236,20 @@ export class BridgeStore {
       );
   }
 
-  recentConversation(conversationKey: string, limit: number): StoredMessage[] {
+  recentConversation(
+    conversationKey: string,
+    limit: number,
+    newerThan = 0,
+  ): StoredMessage[] {
     const rows = this.db
       .prepare(`
         SELECT role, content, source_message_id, created_at
         FROM conversation_messages
-        WHERE conversation_key = ?
+        WHERE conversation_key = ? AND created_at >= ?
         ORDER BY id DESC
         LIMIT ?
       `)
-      .all(conversationKey, limit) as Array<{
+      .all(conversationKey, newerThan, limit) as Array<{
       role: MessageRole;
       content: string;
       source_message_id: string;
@@ -166,6 +262,188 @@ export class BridgeStore {
       sourceMessageId: row.source_message_id,
       createdAt: row.created_at,
     }));
+  }
+
+  activeDraft(input: {
+    conversationKey: string;
+    chatId: string;
+    senderId: string;
+    now?: number;
+  }): DraftSnapshot | undefined {
+    const now = input.now ?? Date.now();
+    this.db
+      .prepare(`UPDATE ticket_drafts SET status = 'expired' WHERE status = 'open' AND expires_at <= ?`)
+      .run(now);
+
+    const exact = this.db
+      .prepare(`
+        SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
+               missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+        FROM ticket_drafts
+        WHERE conversation_key = ? AND chat_id = ? AND sender_id = ? AND status = 'open'
+        LIMIT 1
+      `)
+      .get(input.conversationKey, input.chatId, input.senderId) as DraftRow | undefined;
+    if (exact) return draftSnapshot(exact);
+
+    const latest = this.db
+      .prepare(`
+        SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
+               missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+        FROM ticket_drafts
+        WHERE chat_id = ? AND sender_id = ? AND status = 'open'
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `)
+      .get(input.chatId, input.senderId) as DraftRow | undefined;
+    return latest ? draftSnapshot(latest) : undefined;
+  }
+
+  applyDraftUpdate(input: {
+    conversationKey: string;
+    chatId: string;
+    senderId: string;
+    activeDraftId?: string;
+    update: DraftMemoryUpdate;
+    resources?: DownloadedResource[];
+    ttlMs: number;
+    now?: number;
+  }): DraftSnapshot | undefined {
+    const now = input.now ?? Date.now();
+    const expiresAt = now + input.ttlMs;
+    const ticketType = input.update.ticketType?.trim().slice(0, 200) || null;
+    const summary = input.update.summary?.trim().slice(0, 4_000) || "";
+    const missingFields = input.update.missingFields
+      .map((item) => item.trim().slice(0, 200))
+      .filter(Boolean)
+      .slice(0, 50);
+    const workItemIds = input.update.workItemIds
+      .map((item) => item.trim().slice(0, 200))
+      .filter(Boolean)
+      .slice(0, 50);
+    const incomingResources = input.resources ?? [];
+
+    return this.db.transaction(() => {
+      this.db
+        .prepare(`UPDATE ticket_drafts SET status = 'expired' WHERE status = 'open' AND expires_at <= ?`)
+        .run(now);
+
+      if (input.update.action === "none") return undefined;
+
+      if (input.update.action === "close") {
+        const targetId = input.activeDraftId ?? (
+          this.db
+            .prepare(`
+              SELECT id FROM ticket_drafts
+              WHERE conversation_key = ? AND chat_id = ? AND sender_id = ? AND status = 'open'
+              LIMIT 1
+            `)
+            .get(input.conversationKey, input.chatId, input.senderId) as { id: string } | undefined
+        )?.id;
+        if (!targetId) return undefined;
+        this.db
+          .prepare(`
+            UPDATE ticket_drafts
+            SET status = 'closed',
+                ticket_type = COALESCE(?, ticket_type),
+                summary = CASE WHEN ? = '' THEN summary ELSE ? END,
+                missing_fields_json = ?, work_item_ids_json = ?, updated_at = ?
+            WHERE id = ? AND chat_id = ? AND sender_id = ?
+          `)
+          .run(
+            ticketType,
+            summary,
+            summary,
+            JSON.stringify(missingFields),
+            JSON.stringify(workItemIds),
+            now,
+            targetId,
+            input.chatId,
+            input.senderId,
+          );
+        return undefined;
+      }
+
+      if (input.update.action === "update" && input.activeDraftId) {
+        const current = this.db
+          .prepare(`SELECT resources_json FROM ticket_drafts WHERE id = ?`)
+          .get(input.activeDraftId) as { resources_json: string } | undefined;
+        const resources = mergeResources(
+          current ? parseResources(current.resources_json) : [],
+          incomingResources,
+        );
+        this.db
+          .prepare(`
+            UPDATE ticket_drafts
+            SET ticket_type = COALESCE(?, ticket_type), summary = ?,
+                missing_fields_json = ?, work_item_ids_json = ?, resources_json = ?,
+                updated_at = ?, expires_at = ?
+            WHERE id = ? AND chat_id = ? AND sender_id = ? AND status = 'open'
+          `)
+          .run(
+            ticketType,
+            summary,
+            JSON.stringify(missingFields),
+            JSON.stringify(workItemIds),
+            JSON.stringify(resources),
+            now,
+            expiresAt,
+            input.activeDraftId,
+            input.chatId,
+            input.senderId,
+          );
+        const updated = this.db
+          .prepare(`
+            SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
+                   missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+            FROM ticket_drafts WHERE id = ? AND status = 'open'
+          `)
+          .get(input.activeDraftId) as DraftRow | undefined;
+        if (updated) return draftSnapshot(updated);
+      }
+
+      const id = randomUUID();
+      this.db
+        .prepare(`
+          INSERT INTO ticket_drafts (
+            id, conversation_key, chat_id, sender_id, status, ticket_type, summary,
+            missing_fields_json, work_item_ids_json, resources_json, created_at, updated_at, expires_at
+          ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(conversation_key) DO UPDATE SET
+            chat_id = excluded.chat_id,
+            sender_id = excluded.sender_id,
+            status = 'open',
+            ticket_type = excluded.ticket_type,
+            summary = excluded.summary,
+            missing_fields_json = excluded.missing_fields_json,
+            work_item_ids_json = excluded.work_item_ids_json,
+            resources_json = excluded.resources_json,
+            updated_at = excluded.updated_at,
+            expires_at = excluded.expires_at
+        `)
+        .run(
+          id,
+          input.conversationKey,
+          input.chatId,
+          input.senderId,
+          ticketType,
+          summary,
+          JSON.stringify(missingFields),
+          JSON.stringify(workItemIds),
+          JSON.stringify(incomingResources.slice(-50)),
+          now,
+          now,
+          expiresAt,
+        );
+      const row = this.db
+        .prepare(`
+          SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
+                 missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+          FROM ticket_drafts WHERE conversation_key = ? AND status = 'open'
+        `)
+        .get(input.conversationKey) as DraftRow;
+      return draftSnapshot(row);
+    })();
   }
 
   saveResources(messageId: string, resources: DownloadedResource[]): void {

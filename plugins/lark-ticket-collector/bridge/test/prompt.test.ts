@@ -47,10 +47,62 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /创建一个风控工单/);
 });
 
-test("conversation key isolates senders in the same chat", () => {
-  assert.equal(conversationKey({ chatId: "oc_1", senderId: "ou_1" }), "oc_1:ou_1");
-  assert.notEqual(
-    conversationKey({ chatId: "oc_1", senderId: "ou_1" }),
-    conversationKey({ chatId: "oc_1", senderId: "ou_2" }),
+test("conversation key isolates senders and ticket threads in the same chat", () => {
+  assert.equal(
+    conversationKey({ chatId: "oc_1", senderId: "ou_1", messageId: "om_1" }),
+    "oc_1:ou_1:scope:om_1",
   );
+  assert.equal(
+    conversationKey({
+      chatId: "oc_1",
+      senderId: "ou_1",
+      messageId: "om_reply",
+      rootId: "om_1",
+    }),
+    "oc_1:ou_1:scope:om_1",
+  );
+  assert.notEqual(
+    conversationKey({ chatId: "oc_1", senderId: "ou_1", messageId: "om_1" }),
+    conversationKey({ chatId: "oc_1", senderId: "ou_2", messageId: "om_1" }),
+  );
+  assert.notEqual(
+    conversationKey({ chatId: "oc_1", senderId: "ou_1", messageId: "om_1" }),
+    conversationKey({ chatId: "oc_1", senderId: "ou_1", messageId: "om_2" }),
+  );
+});
+
+test("prompt includes active structured draft without treating it as Meegle truth", () => {
+  const prompt = buildAgentPrompt({
+    resourceRoot: "/tmp/resources",
+    history: [],
+    activeDraft: {
+      id: "draft_1",
+      conversationKey: "oc_1:ou_1:scope:om_1",
+      chatId: "oc_1",
+      senderId: "ou_1",
+      ticketType: "内容维护",
+      summary: "名称为菜单调整，等待关联店铺",
+      missingFields: ["关联客户 / 店铺"],
+      workItemIds: [],
+      resources: [],
+      updatedAt: 10,
+      expiresAt: 20,
+    },
+    envelope: {
+      messageId: "om_2",
+      chatId: "oc_1",
+      chatType: "group",
+      senderId: "ou_1",
+      content: "店铺是 Eastwood",
+      rawContentType: "text",
+      createTime: 2,
+      resources: [],
+    },
+  });
+
+  assert.match(prompt, /当前活动草稿/);
+  assert.match(prompt, /draft_id: draft_1/);
+  assert.match(prompt, /关联客户 \/ 店铺/);
+  assert.match(prompt, /不是 Meegle 的权威状态/);
+  assert.match(prompt, /draft\.action=open/);
 });

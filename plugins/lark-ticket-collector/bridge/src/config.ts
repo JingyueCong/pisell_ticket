@@ -36,7 +36,9 @@ const schema = z.object({
   HEALTH_HOST: z.string().default("127.0.0.1"),
   HEALTH_PORT: z.coerce.number().int().min(0).max(65_535).default(8787),
   MAX_REPLY_CHARS: positiveInt(12_000),
-  MAX_HISTORY_MESSAGES: positiveInt(20),
+  MAX_HISTORY_MESSAGES: positiveInt(12),
+  MAX_HISTORY_AGE_DAYS: positiveInt(30),
+  DRAFT_TTL_HOURS: positiveInt(7 * 24),
   MAX_RESOURCE_BYTES: positiveInt(25 * 1024 * 1024),
 });
 
@@ -129,6 +131,8 @@ export interface BridgeConfig {
   limits: {
     maxReplyChars: number;
     maxHistoryMessages: number;
+    maxHistoryAgeMs: number;
+    draftTtlMs: number;
     maxResourceBytes: number;
   };
   health: {
@@ -177,6 +181,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     limits: {
       maxReplyChars: parsed.MAX_REPLY_CHARS,
       maxHistoryMessages: parsed.MAX_HISTORY_MESSAGES,
+      maxHistoryAgeMs: parsed.MAX_HISTORY_AGE_DAYS * 24 * 60 * 60_000,
+      draftTtlMs: parsed.DRAFT_TTL_HOURS * 60 * 60_000,
       maxResourceBytes: parsed.MAX_RESOURCE_BYTES,
     },
     health: {

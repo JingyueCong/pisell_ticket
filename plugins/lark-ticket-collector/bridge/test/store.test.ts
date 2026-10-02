@@ -75,3 +75,158 @@ test("store keeps a bounded conversation transcript", () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("store filters stale transcript entries without deleting them", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  try {
+    store.addConversationMessage({
+      conversationKey: "oc_1:ou_1:scope:om_1",
+      role: "user",
+      content: "stale",
+      sourceMessageId: "om_1",
+      createdAt: 10,
+    });
+    store.addConversationMessage({
+      conversationKey: "oc_1:ou_1:scope:om_1",
+      role: "assistant",
+      content: "recent",
+      sourceMessageId: "response:om_1",
+      createdAt: 20,
+    });
+
+    assert.deepEqual(
+      store.recentConversation("oc_1:ou_1:scope:om_1", 10, 15).map((message) =>
+        message.content
+      ),
+      ["recent"],
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("store opens, updates, closes, and expires structured ticket drafts", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  const conversationKey = "oc_1:ou_1:scope:om_1";
+  try {
+    const opened = store.applyDraftUpdate({
+      conversationKey,
+      chatId: "oc_1",
+      senderId: "ou_1",
+      update: {
+        action: "open",
+        ticketType: "内容维护",
+        summary: "菜单调整，等待店铺",
+        missingFields: ["关联客户 / 店铺"],
+        workItemIds: [],
+      },
+      resources: [
+        {
+          type: "image",
+          fileKey: "img_1",
+          fileName: "menu.png",
+          localPath: "/tmp/resources/menu.png",
+        },
+      ],
+      ttlMs: 100,
+      now: 1_000,
+    });
+    assert.ok(opened);
+    assert.equal(opened.ticketType, "内容维护");
+    assert.deepEqual(opened.missingFields, ["关联客户 / 店铺"]);
+    assert.equal(opened.resources[0]?.fileKey, "img_1");
+
+    const foundByParticipant = store.activeDraft({
+      conversationKey: "oc_1:ou_1:scope:unrelated",
+      chatId: "oc_1",
+      senderId: "ou_1",
+      now: 1_050,
+    });
+    assert.equal(foundByParticipant?.id, opened.id);
+
+    const updated = store.applyDraftUpdate({
+      conversationKey,
+      chatId: "oc_1",
+      senderId: "ou_1",
+      activeDraftId: opened.id,
+      update: {
+        action: "update",
+        ticketType: "内容维护",
+        summary: "店铺已补充，等待确认人确认",
+        missingFields: ["是否需要确认人确认"],
+        workItemIds: [],
+      },
+      resources: [
+        {
+          type: "file",
+          fileKey: "file_2",
+          fileName: "details.pdf",
+          localPath: "/tmp/resources/details.pdf",
+        },
+      ],
+      ttlMs: 100,
+      now: 1_060,
+    });
+    assert.equal(updated?.summary, "店铺已补充，等待确认人确认");
+    assert.deepEqual(updated?.missingFields, ["是否需要确认人确认"]);
+    assert.deepEqual(updated?.resources.map((resource) => resource.fileKey), [
+      "img_1",
+      "file_2",
+    ]);
+
+    store.applyDraftUpdate({
+      conversationKey,
+      chatId: "oc_1",
+      senderId: "ou_1",
+      activeDraftId: opened.id,
+      update: {
+        action: "close",
+        ticketType: "内容维护",
+        summary: "已创建 #123",
+        missingFields: [],
+        workItemIds: ["123"],
+      },
+      ttlMs: 100,
+      now: 1_070,
+    });
+    assert.equal(
+      store.activeDraft({
+        conversationKey,
+        chatId: "oc_1",
+        senderId: "ou_1",
+        now: 1_080,
+      }),
+      undefined,
+    );
+
+    const expiring = store.applyDraftUpdate({
+      conversationKey: "oc_1:ou_1:scope:om_2",
+      chatId: "oc_1",
+      senderId: "ou_1",
+      update: {
+        action: "open",
+        summary: "等待补充",
+        missingFields: ["任务描述"],
+        workItemIds: [],
+      },
+      ttlMs: 10,
+      now: 2_000,
+    });
+    assert.ok(expiring);
+    assert.equal(
+      store.activeDraft({
+        conversationKey: expiring.conversationKey,
+        chatId: "oc_1",
+        senderId: "ou_1",
+        now: 2_011,
+      }),
+      undefined,
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

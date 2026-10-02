@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { z } from "zod";
 
 import type { BridgeConfig } from "./config.js";
 import { buildAgentPrompt } from "./prompt.js";
@@ -14,10 +16,59 @@ interface ProcessResult {
   timedOut: boolean;
 }
 
+export const AGENT_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reply", "draft"],
+  properties: {
+    reply: { type: "string", minLength: 1 },
+    draft: {
+      type: "object",
+      additionalProperties: false,
+      required: ["action", "ticket_type", "summary", "missing_fields", "work_item_ids"],
+      properties: {
+        action: { type: "string", enum: ["none", "open", "update", "close"] },
+        ticket_type: { type: ["string", "null"] },
+        summary: { type: ["string", "null"] },
+        missing_fields: { type: "array", items: { type: "string" }, maxItems: 50 },
+        work_item_ids: { type: "array", items: { type: "string" }, maxItems: 50 },
+      },
+    },
+  },
+} as const;
+
+const agentOutput = z.object({
+  reply: z.string().min(1),
+  draft: z.object({
+    action: z.enum(["none", "open", "update", "close"]),
+    ticket_type: z.string().nullable(),
+    summary: z.string().nullable(),
+    missing_fields: z.array(z.string()).max(50),
+    work_item_ids: z.array(z.string()).max(50),
+  }),
+});
+
+export function parseAgentOutput(rawOutput: string): Pick<AgentResult, "text" | "draft"> {
+  const parsed = agentOutput.parse(JSON.parse(rawOutput));
+  return {
+    text: parsed.reply.trim(),
+    draft: {
+      action: parsed.draft.action,
+      ...(parsed.draft.ticket_type?.trim()
+        ? { ticketType: parsed.draft.ticket_type.trim() }
+        : {}),
+      ...(parsed.draft.summary?.trim() ? { summary: parsed.draft.summary.trim() } : {}),
+      missingFields: parsed.draft.missing_fields,
+      workItemIds: parsed.draft.work_item_ids,
+    },
+  };
+}
+
 export function buildCodexArgs(input: {
   config: BridgeConfig;
   request: AgentRequest;
   outputPath: string;
+  schemaPath: string;
 }): string[] {
   const args = [
     "exec",
@@ -33,14 +84,21 @@ export function buildCodexArgs(input: {
     input.request.resourceRoot,
     "-o",
     input.outputPath,
+    "--output-schema",
+    input.schemaPath,
   ];
   if (input.config.codex.model) args.push("--model", input.config.codex.model);
   if (input.config.codex.profile) args.push("--profile", input.config.codex.profile);
-  for (const resource of input.request.envelope.resources) {
+  const imagePaths = new Set<string>();
+  for (const resource of [
+    ...input.request.envelope.resources,
+    ...(input.request.activeDraft?.resources ?? []),
+  ]) {
     if (resource.type === "image" && resource.localPath) {
-      args.push("--image", resource.localPath);
+      imagePaths.add(resource.localPath);
     }
   }
+  for (const path of imagePaths) args.push("--image", path);
   args.push("-");
   return args;
 }
@@ -125,7 +183,9 @@ export class CodexCliBackend implements AgentBackend {
   async run(request: AgentRequest): Promise<AgentResult> {
     const tempDirectory = await mkdtemp(join(tmpdir(), "ticket-collector-codex-"));
     const outputPath = join(tempDirectory, "last-message.md");
-    const args = buildCodexArgs({ config: this.config, request, outputPath });
+    const schemaPath = join(tempDirectory, "agent-output.schema.json");
+    await writeFile(schemaPath, JSON.stringify(AGENT_OUTPUT_SCHEMA), { encoding: "utf8" });
+    const args = buildCodexArgs({ config: this.config, request, outputPath, schemaPath });
 
     try {
       const result = await runProcess({
@@ -136,11 +196,11 @@ export class CodexCliBackend implements AgentBackend {
         timeoutMs: this.config.codex.timeoutMs,
       });
 
-      let text = "";
+      let rawOutput = "";
       try {
-        text = (await readFile(outputPath, "utf8")).trim();
+        rawOutput = (await readFile(outputPath, "utf8")).trim();
       } catch {
-        text = extractFallbackText(result.stdout) ?? "";
+        rawOutput = extractFallbackText(result.stdout) ?? "";
       }
 
       if (result.timedOut) {
@@ -154,12 +214,26 @@ export class CodexCliBackend implements AgentBackend {
           }`,
         );
       }
-      if (!text) {
+      if (!rawOutput) {
         throw new Error("工单 Agent 未返回可发送的结果。");
       }
 
+      let parsed: Pick<AgentResult, "text" | "draft">;
+      try {
+        parsed = parseAgentOutput(rawOutput);
+      } catch (error) {
+        throw new Error(
+          `工单 Agent 返回了无效的结构化结果：${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
       const diagnostics = result.stderr.trim() ? [tail(result.stderr)] : [];
-      return { text, diagnostics };
+      return {
+        ...parsed,
+        diagnostics,
+      };
     } finally {
       await rm(tempDirectory, { recursive: true, force: true });
     }

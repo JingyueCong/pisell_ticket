@@ -192,30 +192,51 @@ export class LarkTicketService {
       ]);
       this.store.saveResources(message.messageId, resources);
       const envelope = this.toEnvelope(message, resources, producerSource);
-      const key = conversationKey(envelope);
+      const messageKey = conversationKey(envelope);
+      const activeDraft = this.store.activeDraft({
+        conversationKey: messageKey,
+        chatId: envelope.chatId,
+        senderId: envelope.senderId,
+      });
+      const contextKey = activeDraft?.conversationKey ?? messageKey;
       const userTranscript = this.transcriptText(envelope);
       const history = this.store.recentConversation(
-        key,
+        contextKey,
         this.config.limits.maxHistoryMessages,
+        Date.now() - this.config.limits.maxHistoryAgeMs,
       );
+      const result = await this.agent.run({
+        envelope,
+        history,
+        ...(activeDraft ? { activeDraft } : {}),
+        resourceRoot: this.config.storage.resourceDir,
+      });
+      const reply = truncate(result.text, this.config.limits.maxReplyChars);
+      const resultKey =
+        result.draft.action === "update" || result.draft.action === "close"
+          ? activeDraft?.conversationKey ?? messageKey
+          : messageKey;
       this.store.addConversationMessage({
-        conversationKey: key,
+        conversationKey: resultKey,
         role: "user",
         content: userTranscript,
         sourceMessageId: message.messageId,
         createdAt: message.createTime,
       });
-      const result = await this.agent.run({
-        envelope,
-        history,
-        resourceRoot: this.config.storage.resourceDir,
-      });
-      const reply = truncate(result.text, this.config.limits.maxReplyChars);
       this.store.addConversationMessage({
-        conversationKey: key,
+        conversationKey: resultKey,
         role: "assistant",
         content: reply,
         sourceMessageId: `response:${message.messageId}`,
+      });
+      this.store.applyDraftUpdate({
+        conversationKey: resultKey,
+        chatId: envelope.chatId,
+        senderId: envelope.senderId,
+        ...(activeDraft ? { activeDraftId: activeDraft.id } : {}),
+        update: result.draft,
+        resources: envelope.resources,
+        ttlMs: this.config.limits.draftTtlMs,
       });
       this.store.completeMessage(message.messageId, reply);
 
@@ -223,6 +244,7 @@ export class LarkTicketService {
       logger.info("message.completed", {
         messageId: message.messageId,
         diagnosticsCount: result.diagnostics.length,
+        draftAction: result.draft.action,
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

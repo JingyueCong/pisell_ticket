@@ -2,7 +2,7 @@
 name: lark-ticket-collector
 description: "从飞书群聊或私聊收集问题、需求、客户、销售、内容、开发、验收、硬件、风控等事项，自动路由到 Pisell 项目管理的启用工作项类型，补全创建字段与隐藏角色、检查重复、创建或经授权更新 Meegle 工单，并回读验证附件和当前节点必填项。适用于创建、查询或更新 Pisell 飞书项目工单；不用于代码排查、根因分析或部署。"
 metadata:
-  version: "2.3.0+codex.20261002075613"
+  version: "2.3.0+codex.20261002082008"
   requires:
     bins: ["meegle", "lark-cli"]
 ---
