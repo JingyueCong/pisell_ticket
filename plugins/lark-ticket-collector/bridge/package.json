@@ -26,5 +26,11 @@
     "@types/node": "24.10.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "protobufjs@7.6.6": true
   }
 }
