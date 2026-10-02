@@ -1,0 +1,6 @@
+interface:
+  display_name: "飞书工单收集器"
+  short_description: "路由 Pisell 工单并核验当前节点完整性"
+  default_prompt: "使用 $lark-ticket-collector 判断事项类型，补齐创建字段和隐藏角色，检查重复，创建后核验当前节点未完成必填项。"
+policy:
+  allow_implicit_invocation: true

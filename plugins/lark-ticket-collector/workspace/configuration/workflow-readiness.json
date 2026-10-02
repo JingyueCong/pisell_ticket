@@ -1,0 +1,128 @@
+{
+  "snapshot_date": "2026-09-29",
+  "refresh_before_write": true,
+  "project": {
+    "host": "project.feishu.cn",
+    "name": "Pisell项目管理",
+    "simple_name": "v2qint",
+    "project_key": "67c68170af5c921068953f8b"
+  },
+  "result_states": [
+    {
+      "key": "created",
+      "meaning": "创建接口返回工作项 ID，但尚未完成回读。"
+    },
+    {
+      "key": "create_verified",
+      "meaning": "名称、类型、模板版本和本次写入字段已回读一致。"
+    },
+    {
+      "key": "awaiting_node_input",
+      "meaning": "工作项已创建并回读，但当前节点仍有未完成必填项。"
+    },
+    {
+      "key": "ready_for_processing",
+      "meaning": "工作项已回读，且当前进行中节点没有未完成必填项。"
+    },
+    {
+      "key": "workflow_verified",
+      "meaning": "用户明确授权的节点更新或流转已执行并回读成功。"
+    }
+  ],
+  "generic_policy": {
+    "applies_to_support_modes": ["standard_create"],
+    "post_create_readiness_check": true,
+    "required_sequence": [
+      "workitem get 回读创建字段与 template_version",
+      "workflow get-node 识别 status=doing 的当前节点",
+      "workflow list-state-required --mode unfinished 查询每个当前节点"
+    ],
+    "write_routing": {
+      "field": "workitem update",
+      "node_field": "workflow update-node",
+      "role": "workitem update --role-operate"
+    },
+    "value_policy": {
+      "business_facts": "ask_without_default",
+      "people": "resolve_only_after_user_identifies_person",
+      "enum": "match_live_option_or_ask",
+      "bool": "ask_without_default",
+      "text": "ask_without_placeholder",
+      "date_or_schedule": "ask_without_default",
+      "attachments": "bind_only_user_confirmed_resources"
+    },
+    "success_claim": "只有 create_verified 且当前节点 unfinished 列表为空时，才称为已完整创建或可继续处理。",
+    "transition_policy": "补齐字段不等于授权流转；节点 confirm/rollback 仍需明确指令。"
+  },
+  "profiles": {
+    "risk_control_chargeback": {
+      "type_key": "6a7bbb6b50cf1f8304fedf79",
+      "template_id": "10178724",
+      "template_name": "Chargeback 处理流程",
+      "observed_work_item_id": "7126700308",
+      "observed_template_version": "16",
+      "validation_state": "awaiting_node_input",
+      "hidden_create_roles": [
+        {
+          "role_key": "role_b5881d",
+          "role_name": "当前处理的负责人",
+          "required": true,
+          "source": "create-api-ErrFieldRequired",
+          "value_policy": "用户明确指定；只有用户说本人负责时才解析当前登录人。"
+        }
+      ],
+      "initial_node": {
+        "node_key": "started",
+        "node_name": "问题分析",
+        "required_fields": [
+          {
+            "field_key": "field_be3477",
+            "field_name": "是否已查看后台订单情况",
+            "field_type": "bool",
+            "form_item_type": "field",
+            "update_via": "workitem update"
+          },
+          {
+            "field_key": "field_b63dba",
+            "field_name": "后台交易标识是否设置",
+            "field_type": "select",
+            "form_item_type": "field",
+            "update_via": "workitem update",
+            "options": [
+              {"option_id": "hwcxn6o1r", "option_name": "已设置"},
+              {"option_id": "5c3c09uxu", "option_name": "未设置（需要帮商家进行设置）"}
+            ]
+          },
+          {
+            "field_key": "field_acc6ba",
+            "field_name": "订单基础判断",
+            "field_type": "multi-text",
+            "form_item_type": "field",
+            "update_via": "workitem update"
+          },
+          {
+            "field_key": "field_e78ef8",
+            "field_name": "风控初步分析（判断 Chargeback 可能原因）",
+            "field_type": "multi-text",
+            "form_item_type": "field",
+            "update_via": "workitem update"
+          },
+          {
+            "field_key": "field_c1ea8e",
+            "field_name": "是否已通知商家",
+            "field_type": "bool",
+            "form_item_type": "field",
+            "update_via": "workitem update"
+          },
+          {
+            "field_key": "field_7905c9",
+            "field_name": "nick 扣款任务描述",
+            "field_type": "text",
+            "form_item_type": "field",
+            "update_via": "workitem update"
+          }
+        ]
+      }
+    }
+  }
+}

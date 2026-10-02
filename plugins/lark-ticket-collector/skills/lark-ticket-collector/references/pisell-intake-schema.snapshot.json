@@ -1,0 +1,516 @@
+{
+  "verified_at": "2026-09-07",
+  "source_url": "https://project.feishu.cn/v2qint/bug/detail/7100875886",
+  "project": {
+    "name": "Pisell项目管理",
+    "simple_name": "v2qint",
+    "project_key": "67c68170af5c921068953f8b"
+  },
+  "work_item_type": {
+    "api_name": "bug",
+    "name": "阻断性问题（Blocking Issues）",
+    "type_key": "67df88cf656f61b9b41455d3"
+  },
+  "notice": "只读配置快照，不是运行时默认值；每次写入前实时核验。未验证创建表单条件表达式。",
+  "fields": [
+    {
+      "field_key": "name",
+      "field_name": "名称",
+      "field_type": "_name"
+    },
+    {
+      "field_key": "template",
+      "field_name": "bug池类型",
+      "field_type": "_work_item_template",
+      "option": [
+        {
+          "option_id": "2769525",
+          "option_name": "默认流程类型"
+        }
+      ]
+    },
+    {
+      "field_key": "field_ef7f33",
+      "field_name": "客户管理",
+      "field_type": "workitem_related_multi_select",
+      "related_work_item_info": [
+        {
+          "project_key": "67c68170af5c921068953f8b",
+          "work_item_type": "67df84a32e42950cb0195cba"
+        }
+      ]
+    },
+    {
+      "field_key": "priority",
+      "field_name": "紧急程度优先级",
+      "field_type": "select",
+      "option": [
+        {
+          "option_id": "option_1",
+          "option_name": "Lv1-紧急主流程中断"
+        },
+        {
+          "option_id": "option_2",
+          "option_name": "Lv2-紧急核心高优先"
+        },
+        {
+          "option_id": "option_3",
+          "option_name": "Lv3-紧急次核心中优先"
+        },
+        {
+          "option_id": "0xafdk1wt",
+          "option_name": "Lv4-非紧急非主流程"
+        },
+        {
+          "option_id": "6imsdhwps",
+          "option_name": "Lv5-低频低优先"
+        },
+        {
+          "option_id": "4g7j2gj6j",
+          "option_name": "Lv6-体验提升"
+        },
+        {
+          "option_id": "m7t7qy7sy",
+          "option_name": "Lv7-需求申请"
+        },
+        {
+          "option_id": "9svspqh76",
+          "option_name": "Lv8-长期需求池"
+        }
+      ]
+    },
+    {
+      "field_key": "field_17627b",
+      "field_name": "阻断性问题类型",
+      "field_type": "select",
+      "option": [
+        {
+          "option_id": "fvdly4u4s",
+          "option_name": "技术缺陷（T-BUG）"
+        },
+        {
+          "option_id": "0dbh84psw",
+          "option_name": "功能缺口（T-PRD）"
+        },
+        {
+          "option_id": "cjv4fkwgp",
+          "option_name": "新功能需求（T-FEATURE）"
+        },
+        {
+          "option_id": "odmlm3wye",
+          "option_name": "Picoding优化问题（T-Picoding）"
+        },
+        {
+          "option_id": "5dl2cigos",
+          "option_name": "交互缺陷（T-UX）"
+        },
+        {
+          "option_id": "7nia74laz",
+          "option_name": "系统性能问题（T-PFM）"
+        },
+        {
+          "option_id": "0o8ndpkod",
+          "option_name": "设置问题（T-CONF）"
+        },
+        {
+          "option_id": "e_4os8owb",
+          "option_name": "教育问题（T-EDU）"
+        },
+        {
+          "option_id": "iqqal0dol",
+          "option_name": "架构缺失（T-FRM）"
+        },
+        {
+          "option_id": "i145iveqh",
+          "option_name": "疑难杂症（T-MISC）"
+        },
+        {
+          "option_id": "ty4c1vde1",
+          "option_name": "非以上问题退回"
+        },
+        {
+          "option_id": "lernuq7p2",
+          "option_name": "紧急情况补录"
+        }
+      ]
+    },
+    {
+      "field_key": "field_bfee07",
+      "field_name": "task拆解分析备注",
+      "field_type": "multi-text"
+    },
+    {
+      "field_key": "field_22701f",
+      "field_name": "发生时间点（尽可能精确）",
+      "field_type": "date"
+    },
+    {
+      "field_key": "field_8318ee",
+      "field_name": "店铺id",
+      "field_type": "text"
+    },
+    {
+      "field_key": "field_41737a",
+      "field_name": "页面链接及说明",
+      "field_type": "multi-text"
+    },
+    {
+      "field_key": "field_afbac9",
+      "field_name": "终端详情（可多选）",
+      "field_type": "multi-select",
+      "option": [
+        {
+          "option_id": "9_yt1xhe1",
+          "option_name": "WebPOS IOS"
+        },
+        {
+          "option_id": "_hrj43cv0",
+          "option_name": "WebPOS Android"
+        },
+        {
+          "option_id": "hw_q3genc",
+          "option_name": "在线店铺（预约）"
+        },
+        {
+          "option_id": "4h7hin996",
+          "option_name": "在线店铺（扫码点餐）"
+        },
+        {
+          "option_id": "uwxm6zqj8",
+          "option_name": "收银系统（POS Terminal）"
+        },
+        {
+          "option_id": "7bdqxatkq",
+          "option_name": "客显（CDS）"
+        },
+        {
+          "option_id": "gryb8iqug",
+          "option_name": "安卓自助服务机（Kiosk Android）安卓原生"
+        },
+        {
+          "option_id": "b6c1fas79",
+          "option_name": "Pisell Web Kiosk"
+        },
+        {
+          "option_id": "yyanoct5d",
+          "option_name": "商家管理后台"
+        },
+        {
+          "option_id": "pni2pbcs5",
+          "option_name": "IOS报告（Dashboard）APP"
+        },
+        {
+          "option_id": "smaz5ak9t",
+          "option_name": "安卓报告（Dashboard）APP"
+        },
+        {
+          "option_id": "k23ngvijs",
+          "option_name": "库存管理系统（IS）"
+        },
+        {
+          "option_id": "ezd998j6w",
+          "option_name": "IOS商家APP"
+        },
+        {
+          "option_id": "drz2f8kug",
+          "option_name": "IOS商家管理后台APP"
+        },
+        {
+          "option_id": "4vvnrq24i",
+          "option_name": "安卓厨显（ITS）"
+        },
+        {
+          "option_id": "c1q5nq_zy",
+          "option_name": "安卓厨房打印控制（KDS）"
+        },
+        {
+          "option_id": "2k7ewqkrn",
+          "option_name": "安卓取餐屏（ODS）"
+        },
+        {
+          "option_id": "hfv5ah_bm",
+          "option_name": "安卓广告屏（ADS）"
+        },
+        {
+          "option_id": "jj5e4hrxo",
+          "option_name": "安卓商家在线店铺APP"
+        },
+        {
+          "option_id": "i6w1lpm0m",
+          "option_name": "安卓商家管理后台APP"
+        },
+        {
+          "option_id": "ymlyj4nsm",
+          "option_name": "在线店铺（零售）"
+        },
+        {
+          "option_id": "4t0wn98jm",
+          "option_name": "在线店铺小程序"
+        },
+        {
+          "option_id": "t8i_rj5bw",
+          "option_name": "团购小程序"
+        },
+        {
+          "option_id": "ase82rosg",
+          "option_name": "支付小程序"
+        }
+      ]
+    },
+    {
+      "field_key": "field_c28813",
+      "field_name": "描述补充",
+      "field_type": "multi-text"
+    },
+    {
+      "field_key": "field_c1977f",
+      "field_name": "预期修复截止时间",
+      "field_type": "date"
+    },
+    {
+      "field_key": "field_10c5ea",
+      "field_name": "反馈类型",
+      "field_type": "select",
+      "option": [
+        {
+          "option_id": "p4e3gjctn",
+          "option_name": "内部发现"
+        },
+        {
+          "option_id": "ekwus7r9r",
+          "option_name": "商家反馈"
+        }
+      ]
+    },
+    {
+      "field_key": "field_295507",
+      "field_name": "客服工单",
+      "field_type": "workitem_related_multi_select",
+      "related_work_item_info": [
+        {
+          "project_key": "67c68170af5c921068953f8b",
+          "work_item_type": "6886d47112cff2ae4ae279e3"
+        }
+      ]
+    },
+    {
+      "field_key": "field_7ea900",
+      "field_name": "缺陷相关截图或视频",
+      "field_type": "multi-file"
+    },
+    {
+      "field_key": "field_2893b2",
+      "field_name": "APP版本号",
+      "field_type": "text"
+    },
+    {
+      "field_key": "field_1e9d61",
+      "field_name": "软件版本",
+      "field_type": "text"
+    },
+    {
+      "field_key": "field_c82e24",
+      "field_name": "硬件详情",
+      "field_type": "text"
+    },
+    {
+      "field_key": "field_c21b7f",
+      "field_name": "内部发现人",
+      "field_type": "multi-user"
+    },
+    {
+      "field_key": "field_fc3891",
+      "field_name": "终端类型",
+      "field_type": "multi-select",
+      "option": [
+        {
+          "option_id": "bgs1w9il3",
+          "option_name": "Web 手机"
+        },
+        {
+          "option_id": "gw78wji59",
+          "option_name": "Web 网页"
+        },
+        {
+          "option_id": "e3o4xm2h3",
+          "option_name": "安卓APP"
+        },
+        {
+          "option_id": "h478hk03v",
+          "option_name": "苹果APP"
+        },
+        {
+          "option_id": "azu9lsl7n",
+          "option_name": "微信小程序"
+        },
+        {
+          "option_id": "5q0wl9jw5",
+          "option_name": "pwa"
+        },
+        {
+          "option_id": "sd1ww_25t",
+          "option_name": "后端"
+        }
+      ]
+    },
+    {
+      "field_key": "field_2c534f",
+      "field_name": "问题来源",
+      "field_type": "multi-select",
+      "option": [
+        {
+          "option_id": "0_bptgufc",
+          "option_name": "企业微信"
+        },
+        {
+          "option_id": "8sgpdc6q1",
+          "option_name": "WhatsApp"
+        },
+        {
+          "option_id": "5wgaiy95u",
+          "option_name": "客服专用邮箱"
+        },
+        {
+          "option_id": "8di1jsvz3",
+          "option_name": "飞书商家群"
+        },
+        {
+          "option_id": "37b1uz5tg",
+          "option_name": "Zendesk 工单系统（含电话、Chat、留言）"
+        },
+        {
+          "option_id": "1eoxte5t4",
+          "option_name": "线下销售/运营转述反馈"
+        }
+      ]
+    },
+    {
+      "field_key": "field_91fbb2",
+      "field_name": "商家问题提出人",
+      "field_type": "multi-text"
+    }
+  ],
+  "create_field_conf": [
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_2893b2",
+      "field_name": "APP版本号",
+      "field_type_key": "text",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_1e9d61",
+      "field_name": "软件版本",
+      "field_type_key": "text",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_c82e24",
+      "field_name": "硬件详情",
+      "field_type_key": "text",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_10c5ea",
+      "field_name": "反馈类型",
+      "field_type_key": "select",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_8318ee",
+      "field_name": "店铺id",
+      "field_type_key": "text",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_41737a",
+      "field_name": "页面链接及说明",
+      "field_type_key": "multi_text",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_22701f",
+      "field_name": "发生时间点（尽可能精确）",
+      "field_type_key": "date",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_c21b7f",
+      "field_name": "内部发现人",
+      "field_type_key": "multi_user",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_17627b",
+      "field_name": "阻断性问题类型",
+      "field_type_key": "select",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "",
+      "field_key": "field_afbac9",
+      "field_name": "终端详情（可多选）",
+      "field_type_key": "multi_select",
+      "is_required": 1
+    },
+    {
+      "default_value": {
+        "default_appear": 2,
+        "value": null
+      },
+      "field_alias": "priority",
+      "field_key": "priority",
+      "field_name": "紧急程度优先级",
+      "field_type_key": "select",
+      "is_required": 1
+    }
+  ]
+}

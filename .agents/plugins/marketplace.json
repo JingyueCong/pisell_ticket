@@ -1,0 +1,20 @@
+{
+  "name": "pisell-ticket",
+  "interface": {
+    "displayName": "Pisell Ticket"
+  },
+  "plugins": [
+    {
+      "name": "lark-ticket-collector",
+      "source": {
+        "source": "local",
+        "path": "./plugins/lark-ticket-collector"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

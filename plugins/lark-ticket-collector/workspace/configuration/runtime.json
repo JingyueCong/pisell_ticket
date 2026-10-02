@@ -1,0 +1,38 @@
+{
+  "project": {
+    "host": "project.feishu.cn",
+    "simple_name": "v2qint"
+  },
+  "content_maintenance": {
+    "producer_role_source": {
+      "source_chat_id_env": "CONTENT_PRODUCER_SOURCE_CHAT_ID",
+      "read_mode": "chat_name_only",
+      "lark_identity": "bot",
+      "bridge_prefetch": true,
+      "lark_cli_profile_env": "LARK_CLI_PROFILE",
+      "extract_pattern": "制作\\s*[:：]\\s*(.+?)(?=\\s*确认\\s*[:：]|$)",
+      "name_split_pattern": "[/／、,，&＆]+",
+      "target_role_name": "制作人&交付人",
+      "observed_role_key": "role_c17278",
+      "refresh_chat_name_before_each_create": true,
+      "refresh_role_metadata_before_write": true,
+      "require_active_unique_user_match": true,
+      "applies_to_new_items_only": true,
+      "failure_policy": "ask_user_without_create",
+      "conflict_policy": "ask_user_without_create"
+    }
+  },
+  "handoff": {
+    "chat_id_env": "YOKO_HANDOFF_CHAT_ID",
+    "recipient_display_name": "Yoko CLI",
+    "recipient_app_id": null,
+    "recipient_member_id": null,
+    "resolve_member_per_sender_app": true,
+    "enabled_work_item_types": ["67df88cf656f61b9b41455d3"]
+  },
+  "required_lark_scopes": [
+    "im:chat:read",
+    "im:message:send_as_bot",
+    "im:chat.members:read"
+  ]
+}

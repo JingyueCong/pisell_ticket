@@ -1,0 +1,30 @@
+{
+  "name": "@pisell/lark-ticket-collector-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless Feishu bridge for the Pisell ticket collector Codex plugin.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "doctor": "tsx src/doctor.ts",
+    "dev": "tsx watch src/main.ts",
+    "workspace:init": "tsx src/init-workspace.ts",
+    "start": "node dist/src/main.js",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.74.0",
+    "better-sqlite3": "13.0.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "24.10.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

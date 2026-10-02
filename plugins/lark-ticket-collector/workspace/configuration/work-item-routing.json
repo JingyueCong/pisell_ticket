@@ -1,0 +1,193 @@
+{
+  "snapshot_date": "2026-10-02",
+  "refresh_before_write": true,
+  "project": {
+    "host": "project.feishu.cn",
+    "simple_name": "v2qint",
+    "project_key": "67c68170af5c921068953f8b"
+  },
+  "types": {
+    "blocking_issue": {
+      "display_name": "阻断性问题（Blocking Issues）",
+      "api_name": "bug",
+      "type_key": "67df88cf656f61b9b41455d3",
+      "intent_terms": ["bug", "tbug", "缺陷", "异常", "报错", "已有功能失效"],
+      "template_ids": ["2769525"],
+      "attachment_field": {
+        "field_key": "field_7ea900",
+        "field_name": "缺陷相关截图或视频"
+      },
+      "handoff_to_yoko": true,
+      "verified_test_work_item_id": "7126656340",
+      "verified_template_version": "166"
+    },
+    "demand_pool": {
+      "display_name": "需求池",
+      "api_name": "xqc",
+      "type_key": "67ee41797f03010701cea7c6",
+      "intent_terms": ["需求", "功能建议", "功能改进", "新功能", "产品建议"],
+      "templates": {
+        "regular": {
+          "template_id": "2823040",
+          "template_name": "常规评估规划流程类型",
+          "use_when": "普通功能建议或改进，且未明确付费开发或综合设计任务"
+        },
+        "paid_development": {
+          "template_id": "3012664",
+          "template_name": "付费开发评估流程类型",
+          "use_when": "用户明确说明付费开发、有偿开发或需要报价"
+        },
+        "design_task": {
+          "template_id": "3310913",
+          "template_name": "综合设计任务流程",
+          "use_when": "用户明确说明综合设计或独立 UI/UX 设计任务"
+        }
+      },
+      "minimum_input": ["需求名称或清晰的需求描述"],
+      "optional_fields": {
+        "description": "description",
+        "priority": "priority",
+        "customer": "field_5cd576"
+      },
+      "attachment_field": {
+        "field_key": "field_62493b",
+        "field_name": "附件"
+      },
+      "handoff_to_yoko": false,
+      "verified_test_work_item_id": "7126715164",
+      "verified_template_version": "25",
+      "verified_current_node": "产品框架评估"
+    },
+    "customer_service": {
+      "display_name": "客服工单",
+      "api_name": "kfgd",
+      "type_key": "6886d47112cff2ae4ae279e3",
+      "intent_terms": ["客服工单", "客户咨询", "客户请求", "商家反馈", "运营跟进", "售后"],
+      "template_ids": ["3399515"],
+      "required_input": [
+        "问题描述",
+        "客户或店铺",
+        "问题来源",
+        "对应问题类型",
+        "工单问题等级",
+        "商家问题提出人",
+        "下次跟进时间"
+      ],
+      "effective_required_fields": [
+        {"field_key": "name", "field_name": "名称", "source": "meta-create-fields"},
+        {"field_key": "template", "field_name": "客服工单类型", "source": "meta-create-fields"},
+        {"field_key": "field_20a3c6", "field_name": "问题来源", "source": "meta-create-fields"},
+        {"field_key": "field_5e764e", "field_name": "对应问题类型", "source": "meta-create-fields"},
+        {"field_key": "field_636ce3", "field_name": "工单问题等级", "source": "meta-create-fields"},
+        {"field_key": "field_5fe6c7", "field_name": "客户管理", "source": "meta-create-fields"},
+        {"field_key": "description", "field_name": "描述", "source": "meta-create-fields"},
+        {"field_key": "field_91fbb2", "field_name": "商家问题提出人", "source": "meta-create-fields"},
+        {"field_key": "field_234f83", "field_name": "下次跟进时间", "source": "create-api-ErrFieldRequired-2026-09-28"}
+      ],
+      "source_field": "field_20a3c6",
+      "issue_type_field": "field_5e764e",
+      "level_field": "field_636ce3",
+      "customer_field": "field_5fe6c7",
+      "proposer_field": "field_91fbb2",
+      "next_followup_field": "field_234f83",
+      "attachment_field": {
+        "field_key": "field_f0d460",
+        "field_name": "附件"
+      },
+      "paired_blocking_issue_policy": {
+        "enabled": true,
+        "authorized_at": "2026-10-02",
+        "trigger": {
+          "field_key": "field_5e764e",
+          "match_mode": "any",
+          "options": [
+            {
+              "option_id_snapshot": "yhvo6by6_",
+              "option_name": "T1核心阻断性问题",
+              "blocking_priority_name": "Lv1-紧急主流程中断"
+            },
+            {
+              "option_id_snapshot": "ifvzdxzu1",
+              "option_name": "T2非核心阻断性问题类流转升级",
+              "blocking_priority_name": "Lv2-紧急核心高优先"
+            }
+          ],
+          "refresh_option_ids_before_write": true
+        },
+        "blocking_work_item_type": {
+          "type_key": "67df88cf656f61b9b41455d3",
+          "api_name": "bug",
+          "template_id_snapshot": "2769525",
+          "refresh_template_before_write": true
+        },
+        "relation_fields": {
+          "customer_service_to_blocking": {
+            "field_key": "field_d1511f",
+            "field_name": "阻断性问题",
+            "related_type_key": "67df88cf656f61b9b41455d3"
+          },
+          "blocking_to_customer_service": {
+            "field_key": "field_295507",
+            "field_name": "客服工单",
+            "related_type_key": "6886d47112cff2ae4ae279e3"
+          },
+          "refresh_before_write": true
+        },
+        "blocking_field_mapping": [
+          {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+          {"target_field_key": "field_ef7f33", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
+          {"target_field_key": "field_8318ee", "target_field_name": "店铺id", "source": "explicit_store_id_or_verified_crm_name_prefix"},
+          {"target_field_key": "field_41737a", "target_field_name": "页面链接及说明", "source": "customer_service.description"},
+          {"target_field_key": "field_c28813", "target_field_name": "描述补充", "source": "customer_service.description_and_evidence_summary"},
+          {"target_field_key": "field_c21b7f", "target_field_name": "内部发现人", "source": "original_intake_sender"},
+          {"target_field_key": "field_afbac9", "target_field_name": "终端详情（可多选）", "source": "message_or_bound_image"},
+          {"target_field_key": "field_295507", "target_field_name": "客服工单", "source": "created_customer_service_id"},
+          {"target_field_key": "field_7ea900", "target_field_name": "缺陷相关截图或视频", "source": "bundle_attachments"}
+        ],
+        "authorized_defaults": [
+          {"target_field_key": "field_17627b", "target_field_name": "阻断性问题类型", "value_name": "技术缺陷（T-BUG）", "unless_explicit_classification": true},
+          {"target_field_key": "field_10c5ea", "target_field_name": "反馈类型", "value_name": "内部发现"},
+          {"target_field_key": "field_22701f", "target_field_name": "发生时间点（尽可能精确）", "value_source": "single_submit_timestamp"},
+          {"target_field_key": "field_c1977f", "target_field_name": "预期修复截止时间", "value_source": "single_submit_timestamp"}
+        ],
+        "conditional_text_placeholders": {
+          "use_only_when_current_create_protocol_requires_non_empty": true,
+          "field_keys": ["field_2893b2", "field_1e9d61", "field_c82e24"],
+          "value": "未提供（客服工单联动，待技术确认）",
+          "must_disclose_in_preview_and_result": true
+        },
+        "must_resolve_without_placeholder": [
+          "unique_customer_crm",
+          "store_id",
+          "terminal",
+          "original_sender_meegle_user"
+        ],
+        "dedupe": {
+          "scope_type_key": "67df88cf656f61b9b41455d3",
+          "exact_keys": ["source_message_id", "related_customer_service_id", "customer_crm_id", "full_store_id", "normalized_name", "terminal", "occurrence_window"],
+          "similar_title_requires_user_choice": true,
+          "reuse_exact_match_instead_of_create": true
+        },
+        "write_sequence": [
+          "validate_both_drafts_and_dedupe_results",
+          "create_and_verify_customer_service",
+          "reuse_or_create_and_verify_blocking_issue",
+          "write_and_verify_customer_service_to_blocking_relation",
+          "archive_and_verify_each_item_attachments",
+          "check_each_item_current_node_readiness",
+          "handoff_new_blocking_issue_only"
+        ],
+        "partial_failure_policy": {
+          "preserve_created_ids": true,
+          "never_recreate_bundle": true,
+          "resume_only_missing_steps": true,
+          "report_partial_completion": true
+        }
+      },
+      "handoff_to_yoko": false,
+      "verified_test_work_item_id": "7126688803",
+      "verified_template_version": "66",
+      "verified_current_node": "内部定期跟进（务必填写下次跟进时间）"
+    }
+  }
+}

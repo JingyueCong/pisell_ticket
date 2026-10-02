@@ -1,0 +1,421 @@
+{
+  "snapshot_date": "2026-09-29",
+  "refresh_before_write": true,
+  "project": {
+    "host": "project.feishu.cn",
+    "name": "Pisell项目管理",
+    "simple_name": "v2qint",
+    "project_key": "67c68170af5c921068953f8b"
+  },
+  "summary": {
+    "total_types": 22,
+    "active_types": 18,
+    "disabled_types": 4,
+    "standard_create_types": 16,
+    "specialized_active_types": 2,
+    "create_e2e_verified_types": 4,
+    "ready_e2e_verified_types": 0,
+    "awaiting_node_input_verified_types": 1
+  },
+  "workflow_readiness_profile": "workspace/configuration/workflow-readiness.json",
+  "types": [
+    {
+      "slug": "legacy_story",
+      "display_name": "需求",
+      "api_name": "story",
+      "type_key": "story",
+      "platform_status": "disabled",
+      "support_mode": "read_only_history",
+      "intent_aliases": ["旧需求", "历史需求"]
+    },
+    {
+      "slug": "legacy_issue",
+      "display_name": "缺陷",
+      "api_name": "issue",
+      "type_key": "issue",
+      "platform_status": "disabled",
+      "support_mode": "read_only_history",
+      "intent_aliases": ["旧缺陷", "历史缺陷"]
+    },
+    {
+      "slug": "chart",
+      "display_name": "图表",
+      "api_name": "chart",
+      "type_key": "chart",
+      "platform_status": "active",
+      "support_mode": "specialized_chart_domain",
+      "intent_aliases": ["图表", "度量图表"],
+      "create_fields": [],
+      "templates": [],
+      "attachments": []
+    },
+    {
+      "slug": "sub_task",
+      "display_name": "任务",
+      "api_name": "sub_task",
+      "type_key": "sub_task",
+      "platform_status": "active",
+      "support_mode": "specialized_subtask_domain",
+      "intent_aliases": ["子任务", "节点任务"],
+      "create_fields": [],
+      "templates": [],
+      "attachments": [],
+      "required_context": ["父工作项或节点"]
+    },
+    {
+      "slug": "development_progress",
+      "display_name": "开发进度",
+      "api_name": "projectm",
+      "type_key": "67c7c18727ecced1e59346bc",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["开发进度", "开发任务", "研发任务", "产品开发"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text"},
+        {"field_key": "template", "field_name": "开发任务流程类型", "field_type": "work_item_template"},
+        {"field_key": "field_22ed6a", "field_name": "是否需要客户确认", "field_type": "bool"}
+      ],
+      "templates": [
+        {"template_id": "2816018", "template_name": "产品规划开发流程"},
+        {"template_id": "2818684", "template_name": "ui组件开发流程"},
+        {"template_id": "3012596", "template_name": "简易产品规划开发流程"},
+        {"template_id": "3500845", "template_name": "发起-完成-验收（简易）流程"},
+        {"template_id": "3513844", "template_name": "Picoding产品规划开发流程"}
+      ],
+      "attachments": []
+    },
+    {
+      "slug": "product_function",
+      "display_name": "产品功能",
+      "api_name": "xq",
+      "type_key": "67c7c75594cf49b77788a937",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["产品功能", "里程碑", "版本拆分"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text"},
+        {"field_key": "template", "field_name": "流程管理类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"}
+      ],
+      "templates": [
+        {"template_id": "2687123", "template_name": "里程碑管理流程类型"},
+        {"template_id": "4334775", "template_name": "版本拆分管理流程类型"},
+        {"template_id": "10557677", "template_name": "无"}
+      ],
+      "attachments": []
+    },
+    {
+      "slug": "customer_crm",
+      "display_name": "客户管理CRM",
+      "api_name": "crm",
+      "type_key": "67df84a32e42950cb0195cba",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["客户管理CRM", "CRM", "客户档案", "新建客户"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "店铺id 客户名称", "field_type": "text"},
+        {"field_key": "field_d865a4", "field_name": "所用服务", "field_type": "multi_select"},
+        {"field_key": "template", "field_name": "客户管理CRM类型", "field_type": "work_item_template"},
+        {"field_key": "field_2577bc", "field_name": "是否需要内容代制作", "field_type": "bool"}
+      ],
+      "templates": [
+        {"template_id": "2769513", "template_name": "普通客户管理CRM类型"},
+        {"template_id": "3163556", "template_name": "老客户管理CRM类型"},
+        {"template_id": "6736777", "template_name": "KA客户管理CRM类型"}
+      ],
+      "attachments": [
+        {"field_key": "field_6da89e", "field_name": "商家反馈评价截图"},
+        {"field_key": "field_207cc6", "field_name": "附件 "},
+        {"field_key": "field_b1ebc5", "field_name": "确认商家付款截图"},
+        {"field_key": "field_c3a01f", "field_name": "合同备份"},
+        {"field_key": "field_9941a1", "field_name": "附件"},
+        {"field_key": "field_35210b", "field_name": "上传扣款截图/invoice附件"},
+        {"field_key": "field_b94916", "field_name": "硬件invoice附件"}
+      ]
+    },
+    {
+      "slug": "sales_opportunity",
+      "display_name": "商机跟进记录",
+      "api_name": "sj",
+      "type_key": "67df857345c74ddf0fc97aa8",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["商机", "商机跟进", "销售机会", "销售跟进"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text"},
+        {"field_key": "template", "field_name": "商机跟进记录类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"},
+        {"field_key": "field_a00854", "field_name": "客户来源渠道", "field_type": "select"},
+        {"field_key": "field_5187e2", "field_name": "所属行业", "field_type": "select"},
+        {"field_key": "field_7aae1c", "field_name": "销售区域", "field_type": "select"},
+        {"field_key": "field_5736c2", "field_name": "客户配合度", "field_type": "select"},
+        {"field_key": "field_fdae3a", "field_name": "客户联络人", "field_type": "text"},
+        {"field_key": "field_c13f86", "field_name": "联络人职位", "field_type": "select"},
+        {"field_key": "field_f9e7ab", "field_name": "门店数", "field_type": "select"},
+        {"field_key": "field_44828b", "field_name": "推进节点", "field_type": "select"},
+        {"field_key": "field_c7610c", "field_name": "合作阶段", "field_type": "select"},
+        {"field_key": "field_da8149", "field_name": "客户热度", "field_type": "select"},
+        {"field_key": "field_35c8d8", "field_name": "推进状态", "field_type": "select"},
+        {"field_key": "field_3ae52e", "field_name": "商家类型", "field_type": "select"}
+      ],
+      "templates": [{"template_id": "2769514", "template_name": "默认商机跟进记录类型"}],
+      "attachments": [
+        {"field_key": "field_c3a01f", "field_name": "合同备份"},
+        {"field_key": "field_9941a1", "field_name": "附件"}
+      ]
+    },
+    {
+      "slug": "content_maintenance",
+      "display_name": "内容维护",
+      "api_name": "nr",
+      "type_key": "67df87a8baf45c9c247ba778",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["内容维护", "内容制作", "代制作", "QA内容"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
+        {"field_key": "template", "field_name": "内容维护类型", "field_type": "work_item_template"},
+        {"field_key": "field_5bccdd", "field_name": "是否需要确认人确认", "field_type": "bool"}
+      ],
+      "create_roles": [
+        {
+          "role_name": "制作人&交付人",
+          "observed_role_key": "role_c17278",
+          "source": "runtime.json#content_maintenance.producer_role_source",
+          "value_policy": "每次创建前读取配置群当前群名并唯一解析全部制作人；角色和人员在线刷新，失败或冲突时停止创建并询问。"
+        }
+      ],
+      "templates": [
+        {"template_id": "2769517", "template_name": "默认内容维护类型"},
+        {"template_id": "5477849", "template_name": "QA单独流程类型"}
+      ],
+      "attachments": [
+        {"field_key": "field_581e1d", "field_name": "附件"},
+        {"field_key": "field_7020f6", "field_name": "交付截图"}
+      ]
+    },
+    {
+      "slug": "blocking_issue",
+      "display_name": "阻断性问题（Blocking Issues）",
+      "api_name": "bug",
+      "type_key": "67df88cf656f61b9b41455d3",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["阻断性问题", "T-BUG", "bug", "缺陷", "异常", "报错"],
+      "create_fields_profile": "workspace/configuration/work-item-routing.json#blocking_issue",
+      "templates": [{"template_id": "2769525", "template_name": "默认流程类型"}],
+      "attachments": [{"field_key": "field_7ea900", "field_name": "缺陷相关截图或视频"}],
+      "handoff_to_yoko": true,
+      "validation": {"level": "create_e2e", "work_item_id": "7126656340", "template_version": "166", "readiness": "not_audited"}
+    },
+    {
+      "slug": "release_iteration",
+      "display_name": "版本迭代",
+      "api_name": "bbdd",
+      "type_key": "67df890f3272196bad15643d",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["版本迭代", "发版", "上线", "版本发布"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
+        {"field_key": "template", "field_name": "版本迭代类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"},
+        {"field_key": "field_af6533", "field_name": "打包方式类型", "field_type": "multi_select"},
+        {"field_key": "field_86e4f6", "field_name": "需执行上线团队", "field_type": "multi_select"},
+        {"field_key": "field_68e9a7", "field_name": "待上线应用/终端", "field_type": "multi_select"}
+      ],
+      "templates": [{"template_id": "2769528", "template_name": "上线流程"}],
+      "attachments": []
+    },
+    {
+      "slug": "xzero_platform",
+      "display_name": "XZero平台开发",
+      "api_name": "xzero",
+      "type_key": "67df8d3ebaa5f84f72d3395d",
+      "platform_status": "disabled",
+      "support_mode": "read_only_history",
+      "intent_aliases": ["XZero平台开发", "XZero"]
+    },
+    {
+      "slug": "demand_pool",
+      "display_name": "需求池",
+      "api_name": "xqc",
+      "type_key": "67ee41797f03010701cea7c6",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["需求池", "功能建议", "产品建议", "新功能", "功能改进"],
+      "create_fields_profile": "workspace/configuration/work-item-routing.json#demand_pool",
+      "templates": [
+        {"template_id": "2823040", "template_name": "常规评估规划流程类型"},
+        {"template_id": "3012664", "template_name": "付费开发评估流程类型"},
+        {"template_id": "3310913", "template_name": "综合设计任务流程"}
+      ],
+      "attachments": [{"field_key": "field_62493b", "field_name": "附件"}],
+      "validation": {"level": "create_e2e", "work_item_id": "7126715164", "template_version": "25", "readiness": "not_audited"}
+    },
+    {
+      "slug": "pisell_os",
+      "display_name": "Pisell OS",
+      "api_name": "os",
+      "type_key": "67fc8713eb9d645203e30d89",
+      "platform_status": "disabled",
+      "support_mode": "read_only_history",
+      "intent_aliases": ["Pisell OS", "OS"]
+    },
+    {
+      "slug": "acceptance_record",
+      "display_name": "验收记录",
+      "api_name": "ys",
+      "type_key": "680844b6fa0cd90b9fcd38d7",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["验收记录", "验收问题", "产品验收", "技术验收"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text"},
+        {"field_key": "template", "field_name": "验收记录类型", "field_type": "work_item_template"},
+        {"field_key": "field_fa7952", "field_name": "问题描述", "field_type": "multi_text"},
+        {"field_key": "field_7bb896", "field_name": "是否需要验收人员排查", "field_type": "bool"}
+      ],
+      "templates": [
+        {"template_id": "2902123", "template_name": "产品缺陷"},
+        {"template_id": "2902127", "template_name": "技术bug"}
+      ],
+      "attachments": [{"field_key": "field_511fea", "field_name": "附件图片/视频"}]
+    },
+    {
+      "slug": "customer_card_machine",
+      "display_name": "客户刷卡机",
+      "api_name": "skj",
+      "type_key": "684b899ff9f859147aeca7dd",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["客户刷卡机", "刷卡机申请", "POS机申请"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text"},
+        {"field_key": "template", "field_name": "客户刷卡机类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"},
+        {"field_key": "field_9ef04c", "field_name": "刷卡机点数", "field_type": "text"},
+        {"field_key": "field_250a31", "field_name": "是否有月租/月费", "field_type": "select"},
+        {"field_key": "field_73f715", "field_name": "预估刷卡机准备完成时间", "field_type": "date"},
+        {"field_key": "field_7bb02e", "field_name": "客户管理CRM", "field_type": "work_item_related_multi_select"},
+        {"field_key": "field_a9ddae", "field_name": "刷卡机数量", "field_type": "text"}
+      ],
+      "templates": [{"template_id": "3113731", "template_name": "默认客户刷卡机类型"}],
+      "attachments": [{"field_key": "field_490c5f", "field_name": "申请资料附件"}]
+    },
+    {
+      "slug": "customer_service",
+      "display_name": "客服工单",
+      "api_name": "kfgd",
+      "type_key": "6886d47112cff2ae4ae279e3",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["客服工单", "客户咨询", "售后", "运营跟进", "商家反馈"],
+      "create_fields_profile": "workspace/configuration/work-item-routing.json#customer_service",
+      "templates": [{"template_id": "3399515", "template_name": "默认客服工单类型"}],
+      "attachments": [
+        {"field_key": "field_f0d460", "field_name": "附件"},
+        {"field_key": "field_9c373e", "field_name": "其他"}
+      ],
+      "validation": {"level": "create_e2e", "work_item_id": "7126688803", "template_version": "66", "readiness": "not_audited"}
+    },
+    {
+      "slug": "pre_ticket",
+      "display_name": "预工单",
+      "api_name": "ygd",
+      "type_key": "688857874fce34fe209d37d9",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["预工单", "预处理工单"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称（商家群名）", "field_type": "text"},
+        {"field_key": "template", "field_name": "预工单类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"},
+        {"field_key": "field_0d9ef4", "field_name": "问题等级", "field_type": "select"}
+      ],
+      "templates": [{"template_id": "3409097", "template_name": "默认预工单类型"}],
+      "attachments": []
+    },
+    {
+      "slug": "hardware_library",
+      "display_name": "硬件库",
+      "api_name": "yj",
+      "type_key": "68a6f8d881ef81c327aaaef0",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["硬件库", "硬件设备", "Device", "硬件采购"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
+        {"field_key": "template", "field_name": "硬件库类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"},
+        {"field_key": "field_715d5d", "field_name": "产品名称（Device）", "field_type": "text"}
+      ],
+      "templates": [{"template_id": "3566822", "template_name": "默认硬件库类型"}],
+      "attachments": [{"field_key": "field_7c3057", "field_name": "采购单"}]
+    },
+    {
+      "slug": "component_development",
+      "display_name": "组件开发",
+      "api_name": "zjkf",
+      "type_key": "69685e6e805973f19b5146d0",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["组件开发", "组件升级", "组件存档"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
+        {"field_key": "template", "field_name": "组件开发流程类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"}
+      ],
+      "templates": [
+        {"template_id": "5455079", "template_name": "默认组件开发类型"},
+        {"template_id": "5476531", "template_name": "老组件存档流程类型"},
+        {"template_id": "5831101", "template_name": "老组件升级开发流程类型"}
+      ],
+      "attachments": []
+    },
+    {
+      "slug": "data_infrastructure",
+      "display_name": "数据基建",
+      "api_name": "sjjj",
+      "type_key": "6a0a717be4358c47e5807620",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["数据基建", "数据基础设施", "数据工程"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
+        {"field_key": "template", "field_name": "数据基建类型", "field_type": "work_item_template", "source": "meta-fields-hidden-from-create-list"}
+      ],
+      "templates": [{"template_id": "7927301", "template_name": "默认数据基建类型"}],
+      "attachments": []
+    },
+    {
+      "slug": "risk_control",
+      "display_name": "风控处理",
+      "api_name": "fklx",
+      "type_key": "6a7bbb6b50cf1f8304fedf79",
+      "platform_status": "active",
+      "support_mode": "standard_create",
+      "intent_aliases": ["风控处理", "Chargeback", "拒付", "日常风控"],
+      "create_fields": [
+        {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
+        {"field_key": "template", "field_name": "风控流程类型", "field_type": "work_item_template"},
+        {"field_key": "field_85f9ea", "field_name": "风控来源", "field_type": "multi_select"},
+        {"field_key": "field_2c62ea", "field_name": "Pisell 订单号", "field_type": "text"},
+        {"field_key": "field_6e633f", "field_name": "Chargeback 原因", "field_type": "multi_text"},
+        {"field_key": "field_e24bc3", "field_name": "MW 通知截图", "field_type": "multi_file"},
+        {"field_key": "field_bcdfab", "field_name": "Chargeback 金额", "field_type": "number"}
+      ],
+      "templates": [
+        {"template_id": "10178724", "template_name": "Chargeback 处理流程"},
+        {"template_id": "10179492", "template_name": "日常风控跟进流程"}
+      ],
+      "readiness_profile": "workspace/configuration/workflow-readiness.json#risk_control_chargeback",
+      "attachments": [
+        {"field_key": "field_eb7afd", "field_name": "附件"},
+        {"field_key": "field_e24bc3", "field_name": "MW 通知截图"},
+        {"field_key": "field_f2fd19", "field_name": "扣款截图"},
+        {"field_key": "field_1bde70", "field_name": "系统邮件 / 后台截图"},
+        {"field_key": "field_7d632b", "field_name": "结案附件"}
+      ],
+      "validation": {
+        "level": "create_e2e",
+        "work_item_id": "7126700308",
+        "template_version": "16",
+        "readiness": "awaiting_node_input"
+      }
+    }
+  ]
+}

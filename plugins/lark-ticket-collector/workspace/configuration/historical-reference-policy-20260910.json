@@ -1,0 +1,13 @@
+{
+  "source_message_id": "om_x100b6516377e98b4b1631bde498949c",
+  "field_key": "field_bfee07",
+  "field_name": "task拆解分析备注",
+  "field_type": "multi-text",
+  "policy": "append_verified_similar_ticket_links_with_brief_factual_similarity",
+  "preserve_existing": true,
+  "deduplicate_by": "work_item_id",
+  "include_completed_when_relevant": true,
+  "scope": "future_intake_current_new_ticket_reference_section",
+  "does_not_authorize_root_cause_analysis": true,
+  "does_not_authorize_historical_item_changes": true
+}

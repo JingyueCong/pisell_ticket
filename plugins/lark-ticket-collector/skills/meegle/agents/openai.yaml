@@ -1,0 +1,6 @@
+interface:
+  display_name: "Meegle 工单操作"
+  short_description: "查询和管理飞书项目中的工作项与流程"
+  default_prompt: "使用 $meegle 查询这个飞书项目工作项的状态和字段。"
+policy:
+  allow_implicit_invocation: true
