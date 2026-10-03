@@ -1,5 +1,6 @@
 {
   "snapshot_date": "2026-10-02",
+  "policy_updated_at": "2026-10-03",
   "refresh_before_write": true,
   "project": {
     "host": "project.feishu.cn",
@@ -16,6 +17,28 @@
       "attachment_field": {
         "field_key": "field_7ea900",
         "field_name": "缺陷相关截图或视频"
+      },
+      "feedback_type_policy": {
+        "field_key": "field_10c5ea",
+        "field_name": "反馈类型",
+        "merchant_feedback_value_name": "商家反馈",
+        "internal_discovery_value_name": "内部发现",
+        "merchant_origin_evidence": [
+          "企业微信",
+          "企微群",
+          "WhatsApp",
+          "客服专用邮箱",
+          "飞书商家群",
+          "Zendesk",
+          "线下销售/运营转述反馈"
+        ],
+        "internal_discoverer_field": {
+          "field_key": "field_c21b7f",
+          "field_name": "内部发现人",
+          "required_only_when_feedback_type_name": "内部发现"
+        },
+        "ambiguous_feedback_type_action": "ask_user",
+        "refresh_option_ids_before_write": true
       },
       "handoff_to_yoko": true,
       "verified_test_work_item_id": "7126656340",
@@ -63,6 +86,25 @@
       "api_name": "kfgd",
       "type_key": "6886d47112cff2ae4ae279e3",
       "intent_terms": ["客服工单", "客户咨询", "客户请求", "商家反馈", "运营跟进", "售后"],
+      "merchant_origin_default_routing": {
+        "enabled": true,
+        "applies_when_request_is_generic_create": true,
+        "merchant_origin_evidence": [
+          "企业微信",
+          "企微群",
+          "WhatsApp",
+          "客服专用邮箱",
+          "飞书商家群",
+          "Zendesk",
+          "线下销售/运营转述反馈"
+        ],
+        "primary_work_item_type": "customer_service",
+        "explicit_type_request_overrides": true,
+        "never_route_directly_to_blocking_issue_from_abnormality_alone": true,
+        "blocking_abnormality_action": "classify_customer_service_issue_as_t1_or_t2_then_apply_paired_blocking_issue_policy",
+        "merchant_feedback_value_name": "商家反馈",
+        "omit_internal_discoverer": true
+      },
       "template_ids": ["3399515"],
       "required_input": [
         "问题描述",
@@ -70,8 +112,7 @@
         "问题来源",
         "对应问题类型",
         "工单问题等级",
-        "商家问题提出人",
-        "下次跟进时间"
+        "商家问题提出人"
       ],
       "effective_required_fields": [
         {"field_key": "name", "field_name": "名称", "source": "meta-create-fields"},
@@ -81,12 +122,33 @@
         {"field_key": "field_636ce3", "field_name": "工单问题等级", "source": "meta-create-fields"},
         {"field_key": "field_5fe6c7", "field_name": "客户管理", "source": "meta-create-fields"},
         {"field_key": "description", "field_name": "描述", "source": "meta-create-fields"},
-        {"field_key": "field_91fbb2", "field_name": "商家问题提出人", "source": "meta-create-fields"},
-        {"field_key": "field_234f83", "field_name": "下次跟进时间", "source": "create-api-ErrFieldRequired-2026-09-28"}
+        {"field_key": "field_91fbb2", "field_name": "商家问题提出人", "source": "meta-create-fields"}
+      ],
+      "conditional_required_fields": [
+        {
+          "field_key": "field_234f83",
+          "field_name": "下次跟进时间",
+          "required_when": {
+            "field_key": "field_5e764e",
+            "option_name": "内部跟进处理",
+            "match_mode": "contains"
+          },
+          "source": "ui-condition-confirmed-2026-10-03-and-create-api-ErrFieldRequired-2026-09-28",
+          "no_default": true
+        }
       ],
       "source_field": "field_20a3c6",
       "issue_type_field": "field_5e764e",
       "level_field": "field_636ce3",
+      "level_default_policy": {
+        "field_key": "field_636ce3",
+        "field_name": "工单问题等级",
+        "default_star_count": 3,
+        "default_option_name": "🌟🌟🌟",
+        "apply_when": "not_explicitly_provided",
+        "explicit_input_overrides": true,
+        "refresh_option_id_before_write": true
+      },
       "customer_field": "field_5fe6c7",
       "proposer_field": "field_91fbb2",
       "next_followup_field": "field_234f83",
@@ -139,14 +201,36 @@
           {"target_field_key": "field_8318ee", "target_field_name": "店铺id", "source": "explicit_store_id_or_verified_crm_name_prefix"},
           {"target_field_key": "field_41737a", "target_field_name": "页面链接及说明", "source": "customer_service.description"},
           {"target_field_key": "field_c28813", "target_field_name": "描述补充", "source": "customer_service.description_and_evidence_summary"},
-          {"target_field_key": "field_c21b7f", "target_field_name": "内部发现人", "source": "original_intake_sender"},
           {"target_field_key": "field_afbac9", "target_field_name": "终端详情（可多选）", "source": "message_or_bound_image"},
           {"target_field_key": "field_295507", "target_field_name": "客服工单", "source": "created_customer_service_id"},
           {"target_field_key": "field_7ea900", "target_field_name": "缺陷相关截图或视频", "source": "bundle_attachments"}
         ],
+        "feedback_type_policy": {
+          "field_key": "field_10c5ea",
+          "field_name": "反馈类型",
+          "external_customer_source_field_key": "field_20a3c6",
+          "external_customer_source_names": [
+            "企业微信",
+            "WhatsApp",
+            "客服专用邮箱",
+            "飞书商家群",
+            "Zendesk 工单系统（含电话、Chat、留言）",
+            "线下销售/运营转述反馈"
+          ],
+          "external_customer_feedback_value_name": "商家反馈",
+          "internal_feedback_value_name": "内部发现",
+          "internal_discovery_requires_explicit_evidence": true,
+          "internal_discoverer": {
+            "field_key": "field_c21b7f",
+            "field_name": "内部发现人",
+            "source": "original_intake_sender",
+            "required_when_feedback_type_name": "内部发现",
+            "omit_when_feedback_type_name": "商家反馈"
+          },
+          "refresh_option_ids_before_write": true
+        },
         "authorized_defaults": [
           {"target_field_key": "field_17627b", "target_field_name": "阻断性问题类型", "value_name": "技术缺陷（T-BUG）", "unless_explicit_classification": true},
-          {"target_field_key": "field_10c5ea", "target_field_name": "反馈类型", "value_name": "内部发现"},
           {"target_field_key": "field_22701f", "target_field_name": "发生时间点（尽可能精确）", "value_source": "single_submit_timestamp"},
           {"target_field_key": "field_c1977f", "target_field_name": "预期修复截止时间", "value_source": "single_submit_timestamp"}
         ],
@@ -159,8 +243,13 @@
         "must_resolve_without_placeholder": [
           "unique_customer_crm",
           "store_id",
-          "terminal",
-          "original_sender_meegle_user"
+          "terminal"
+        ],
+        "conditional_must_resolve_without_placeholder": [
+          {
+            "value": "original_sender_meegle_user",
+            "required_when_feedback_type_name": "内部发现"
+          }
         ],
         "dedupe": {
           "scope_type_key": "67df88cf656f61b9b41455d3",
@@ -186,7 +275,7 @@
       },
       "paired_business_work_item_policies": {
         "enabled": true,
-        "authorized_at": "2026-10-02",
+        "authorized_at": "2026-10-03",
         "trigger": {
           "field_key": "field_5e764e",
           "match_mode": "each_matching_option",
@@ -314,6 +403,85 @@
             "dedupe": {
               "scope_type_key": "67ee41797f03010701cea7c6",
               "exact_keys": ["source_message_id", "related_customer_service_id", "customer_crm_id", "normalized_name"],
+              "similar_title_requires_user_choice": true,
+              "reuse_exact_match_instead_of_create": true
+            }
+          },
+          "customer_card_machine": {
+            "authorized_at": "2026-10-03",
+            "trigger_option": {
+              "option_id_snapshot": "13i_7mmla",
+              "option_name": "客户刷卡机"
+            },
+            "target_work_item_type": {
+              "type_key": "684b899ff9f859147aeca7dd",
+              "api_name": "skj",
+              "display_name": "客户刷卡机",
+              "refresh_before_write": true
+            },
+            "templates": {
+              "default": {
+                "template_id_snapshot": "3113731",
+                "template_name": "默认客户刷卡机类型"
+              },
+              "refresh_before_write": true
+            },
+            "relation_fields": {
+              "customer_service_to_target": {
+                "field_key": "field_baa8cb",
+                "field_name": "关联刷卡机",
+                "related_type_key": "684b899ff9f859147aeca7dd"
+              },
+              "target_to_customer_service": {
+                "field_key": "field_928eb4",
+                "field_name": "关联客服工单",
+                "related_type_key": "6886d47112cff2ae4ae279e3"
+              },
+              "verified_online_at": "2026-10-03",
+              "refresh_before_write": true
+            },
+            "field_mapping": [
+              {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+              {"target_field_key": "description", "target_field_name": "描述", "source": "customer_service.description"},
+              {"target_field_key": "field_7bb02e", "target_field_name": "客户管理CRM", "source": "customer_service.field_5fe6c7"},
+              {"target_field_key": "field_928eb4", "target_field_name": "关联客服工单", "source": "created_customer_service_id"},
+              {"target_field_key": "field_9ef04c", "target_field_name": "刷卡机点数", "source": "explicit_card_machine_points"},
+              {"target_field_key": "field_250a31", "target_field_name": "是否有月租/月费", "source": "explicit_monthly_fee_choice"},
+              {"target_field_key": "field_73f715", "target_field_name": "预估刷卡机准备完成时间", "source": "explicit_estimated_ready_date"},
+              {"target_field_key": "field_a9ddae", "target_field_name": "刷卡机数量", "source": "explicit_card_machine_quantity"},
+              {"target_field_key": "field_490c5f", "target_field_name": "申请资料附件", "source": "card_machine_application_bundle_attachments"}
+            ],
+            "required_business_values": [
+              "unique_customer_crm",
+              "card_machine_points",
+              "monthly_fee_choice",
+              "estimated_ready_date",
+              "card_machine_quantity"
+            ],
+            "paired_creation_gate": {
+              "require_customer_service_and_target_ready_before_any_create": true,
+              "do_not_create_customer_service_only": true,
+              "on_missing_target_values": "keep_customer_service_and_card_machine_as_one_open_bundle_and_ask_all_missing_values",
+              "completion_invariant": "customer_service_and_card_machine_created_or_reused_with_customer_service_outbound_relation_verified",
+              "external_api_writes_are_sequential_not_atomic": true
+            },
+            "forbidden_inference": [
+              "missing_card_machine_points",
+              "missing_monthly_fee_choice",
+              "missing_estimated_ready_date",
+              "missing_card_machine_quantity"
+            ],
+            "dedupe": {
+              "scope_type_key": "684b899ff9f859147aeca7dd",
+              "exact_keys": [
+                "source_message_id",
+                "related_customer_service_id",
+                "customer_crm_id",
+                "normalized_name",
+                "card_machine_quantity",
+                "card_machine_points",
+                "estimated_ready_date"
+              ],
               "similar_title_requires_user_choice": true,
               "reuse_exact_match_instead_of_create": true
             }

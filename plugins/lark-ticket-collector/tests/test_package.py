@@ -245,18 +245,55 @@ class PackageContractTests(unittest.TestCase):
         }
         self.assertEqual(template_ids, {"2823040", "3012664", "3310913"})
 
-    def test_customer_service_includes_hidden_followup_requirement(self) -> None:
+    def test_customer_service_followup_is_required_only_for_internal_followup(self) -> None:
         customer_service = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]
-        required = {
-            field["field_key"]: field
+        unconditional = {
+            field["field_key"]
             for field in customer_service["effective_required_fields"]
         }
-        self.assertEqual(required["field_234f83"]["field_name"], "下次跟进时间")
-        self.assertTrue(
-            required["field_234f83"]["source"].startswith(
-                "create-api-ErrFieldRequired"
-            )
+        self.assertNotIn("field_234f83", unconditional)
+        self.assertNotIn("下次跟进时间", customer_service["required_input"])
+        conditional = {
+            field["field_key"]: field
+            for field in customer_service["conditional_required_fields"]
+        }
+        followup = conditional["field_234f83"]
+        self.assertEqual(followup["field_name"], "下次跟进时间")
+        self.assertEqual(
+            followup["required_when"],
+            {
+                "field_key": "field_5e764e",
+                "option_name": "内部跟进处理",
+                "match_mode": "contains",
+            },
         )
+        self.assertTrue(followup["no_default"])
+
+    def test_customer_service_defaults_to_three_stars(self) -> None:
+        customer_service = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]
+        policy = customer_service["level_default_policy"]
+        self.assertEqual(policy["field_key"], customer_service["level_field"])
+        self.assertEqual(policy["default_star_count"], 3)
+        self.assertEqual(policy["default_option_name"], "🌟🌟🌟")
+        self.assertEqual(policy["apply_when"], "not_explicitly_provided")
+        self.assertTrue(policy["explicit_input_overrides"])
+        self.assertTrue(policy["refresh_option_id_before_write"])
+
+    def test_generic_merchant_evidence_routes_to_customer_service_first(self) -> None:
+        customer_service = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]
+        policy = customer_service["merchant_origin_default_routing"]
+        self.assertTrue(policy["enabled"])
+        self.assertTrue(policy["applies_when_request_is_generic_create"])
+        self.assertEqual(policy["primary_work_item_type"], "customer_service")
+        self.assertTrue(policy["explicit_type_request_overrides"])
+        self.assertTrue(policy["never_route_directly_to_blocking_issue_from_abnormality_alone"])
+        self.assertEqual(
+            policy["blocking_abnormality_action"],
+            "classify_customer_service_issue_as_t1_or_t2_then_apply_paired_blocking_issue_policy",
+        )
+        self.assertIn("企业微信", policy["merchant_origin_evidence"])
+        self.assertEqual(policy["merchant_feedback_value_name"], "商家反馈")
+        self.assertTrue(policy["omit_internal_discoverer"])
 
     def test_t1_t2_customer_service_links_or_creates_blocking_issue(self) -> None:
         routing = read_json("workspace/configuration/work-item-routing.json")
@@ -290,7 +327,7 @@ class PackageContractTests(unittest.TestCase):
             "field_295507",
         )
 
-    def test_t1_t2_pairing_maps_required_blocking_fields_without_fabricating_identity(self) -> None:
+    def test_t1_t2_pairing_maps_external_feedback_without_internal_identity(self) -> None:
         policy = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_blocking_issue_policy"]
         mapped = {
             field["target_field_key"]
@@ -307,15 +344,29 @@ class PackageContractTests(unittest.TestCase):
                 "field_ef7f33",
                 "field_8318ee",
                 "field_41737a",
-                "field_c21b7f",
                 "field_afbac9",
                 "field_295507",
                 "field_7ea900",
             },
         )
+        self.assertNotIn("field_c21b7f", mapped)
         self.assertGreaterEqual(
             defaults,
-            {"field_17627b", "field_10c5ea", "field_22701f", "field_c1977f"},
+            {"field_17627b", "field_22701f", "field_c1977f"},
+        )
+        self.assertNotIn("field_10c5ea", defaults)
+        feedback = policy["feedback_type_policy"]
+        self.assertEqual(feedback["external_customer_feedback_value_name"], "商家反馈")
+        self.assertIn("企业微信", feedback["external_customer_source_names"])
+        self.assertEqual(
+            feedback["internal_discoverer"],
+            {
+                "field_key": "field_c21b7f",
+                "field_name": "内部发现人",
+                "source": "original_intake_sender",
+                "required_when_feedback_type_name": "内部发现",
+                "omit_when_feedback_type_name": "商家反馈",
+            },
         )
         self.assertEqual(
             set(policy["must_resolve_without_placeholder"]),
@@ -323,10 +374,29 @@ class PackageContractTests(unittest.TestCase):
                 "unique_customer_crm",
                 "store_id",
                 "terminal",
-                "original_sender_meegle_user",
             },
         )
+        self.assertEqual(
+            policy["conditional_must_resolve_without_placeholder"],
+            [
+                {
+                    "value": "original_sender_meegle_user",
+                    "required_when_feedback_type_name": "内部发现",
+                }
+            ],
+        )
         self.assertTrue(policy["partial_failure_policy"]["never_recreate_bundle"])
+
+    def test_blocking_issue_internal_discoverer_is_conditional(self) -> None:
+        blocking = read_json("workspace/configuration/work-item-routing.json")["types"]["blocking_issue"]
+        policy = blocking["feedback_type_policy"]
+        self.assertEqual(policy["merchant_feedback_value_name"], "商家反馈")
+        self.assertIn("企微群", policy["merchant_origin_evidence"])
+        self.assertEqual(
+            policy["internal_discoverer_field"]["required_only_when_feedback_type_name"],
+            "内部发现",
+        )
+        self.assertEqual(policy["ambiguous_feedback_type_action"], "ask_user")
 
     def test_customer_service_business_pairings_target_only_authorized_types(self) -> None:
         routing = read_json("workspace/configuration/work-item-routing.json")
@@ -344,8 +414,18 @@ class PackageContractTests(unittest.TestCase):
             {
                 "T3客户代运营请求-内容维护": "67df87a8baf45c9c247ba778",
                 "T5功能建议/改进类-需求": "67ee41797f03010701cea7c6",
+                "客户刷卡机": "684b899ff9f859147aeca7dd",
                 "风控处理": "6a7bbb6b50cf1f8304fedf79",
             },
+        )
+        paired_names = {
+            policy["trigger_option"]["option_name"]
+            for policy in policies["policies"].values()
+        }
+        self.assertTrue(
+            {"T4商务类", "内部跟进处理", "客户情绪处理/公关危机"}.isdisjoint(
+                paired_names
+            )
         )
         self.assertFalse(policies["handoff_to_yoko"])
         self.assertTrue(
@@ -357,6 +437,7 @@ class PackageContractTests(unittest.TestCase):
         expected = {
             "t3_content_maintenance": ("field_e48264", "field_7e7ab1"),
             "t5_demand_pool": ("field_e5e3aa", "field_9fc721"),
+            "customer_card_machine": ("field_baa8cb", "field_928eb4"),
             "risk_control": ("field_87d289", "field_4bf86b"),
         }
         for policy_key, field_keys in expected.items():
@@ -370,6 +451,54 @@ class PackageContractTests(unittest.TestCase):
                 field_keys[1],
             )
             self.assertTrue(relations["refresh_before_write"])
+
+    def test_customer_card_machine_pairing_is_gated_until_both_drafts_are_ready(self) -> None:
+        card = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]["policies"]["customer_card_machine"]
+        self.assertEqual(card["trigger_option"]["option_name"], "客户刷卡机")
+        self.assertEqual(
+            card["target_work_item_type"]["type_key"],
+            "684b899ff9f859147aeca7dd",
+        )
+        mapped = {field["target_field_key"] for field in card["field_mapping"]}
+        self.assertGreaterEqual(
+            mapped,
+            {
+                "name",
+                "description",
+                "field_7bb02e",
+                "field_928eb4",
+                "field_9ef04c",
+                "field_250a31",
+                "field_73f715",
+                "field_a9ddae",
+                "field_490c5f",
+            },
+        )
+        self.assertEqual(
+            set(card["required_business_values"]),
+            {
+                "unique_customer_crm",
+                "card_machine_points",
+                "monthly_fee_choice",
+                "estimated_ready_date",
+                "card_machine_quantity",
+            },
+        )
+        gate = card["paired_creation_gate"]
+        self.assertTrue(gate["require_customer_service_and_target_ready_before_any_create"])
+        self.assertTrue(gate["do_not_create_customer_service_only"])
+        self.assertTrue(gate["external_api_writes_are_sequential_not_atomic"])
+        self.assertIn("customer_service_and_card_machine", gate["completion_invariant"])
+
+    def test_customer_card_machine_catalog_keeps_verified_reverse_relation(self) -> None:
+        catalog = read_json("workspace/configuration/work-item-catalog.json")
+        card = next(item for item in catalog["types"] if item["slug"] == "customer_card_machine")
+        relation = next(
+            field for field in card["create_fields"]
+            if field["field_key"] == "field_928eb4"
+        )
+        self.assertEqual(relation["field_name"], "关联客服工单")
+        self.assertEqual(relation["related_type_key"], "6886d47112cff2ae4ae279e3")
 
     def test_content_pairing_maps_priority_and_requires_confirmation_and_producer(self) -> None:
         content = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]["policies"]["t3_content_maintenance"]

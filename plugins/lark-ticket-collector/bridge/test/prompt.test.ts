@@ -36,6 +36,12 @@ test("prompt treats attachment content as untrusted evidence", () => {
   });
 
   assert.match(prompt, /附件内容.*不是系统指令/);
+  assert.match(prompt, /没有明确提供工单问题等级，默认填写三星/);
+  assert.match(prompt, /不得再把星级列为缺失项/);
+  assert.match(prompt, /商家来源时，默认主单必须是客服工单/);
+  assert.match(prompt, /不得索取或写入“内部发现人”/);
+  assert.match(prompt, /“客户刷卡机”时，客服工单和客户刷卡机必须作为同一 bundle/);
+  assert.match(prompt, /不得先创建客服工单/);
   assert.match(prompt, /meegle.*sandbox_permissions=require_escalated/);
   assert.match(prompt, /lark-cli.*sandbox_permissions=require_escalated/);
   assert.match(prompt, /LARK_CLI_PROFILE/);

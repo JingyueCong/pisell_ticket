@@ -294,7 +294,8 @@
         {"field_key": "field_250a31", "field_name": "是否有月租/月费", "field_type": "select"},
         {"field_key": "field_73f715", "field_name": "预估刷卡机准备完成时间", "field_type": "date"},
         {"field_key": "field_7bb02e", "field_name": "客户管理CRM", "field_type": "work_item_related_multi_select"},
-        {"field_key": "field_a9ddae", "field_name": "刷卡机数量", "field_type": "text"}
+        {"field_key": "field_a9ddae", "field_name": "刷卡机数量", "field_type": "text"},
+        {"field_key": "field_928eb4", "field_name": "关联客服工单", "field_type": "workitem_related_multi_select", "related_type_key": "6886d47112cff2ae4ae279e3", "source": "meta-fields-online-2026-10-03"}
       ],
       "templates": [{"template_id": "3113731", "template_name": "默认客户刷卡机类型"}],
       "attachments": [{"field_key": "field_490c5f", "field_name": "申请资料附件"}]
