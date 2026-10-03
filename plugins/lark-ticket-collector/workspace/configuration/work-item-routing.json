@@ -257,6 +257,13 @@
           "similar_title_requires_user_choice": true,
           "reuse_exact_match_instead_of_create": true
         },
+        "paired_creation_gate": {
+          "require_customer_service_and_blocking_draft_ready_before_any_create": true,
+          "do_not_create_customer_service_only": true,
+          "on_missing_blocking_values": "keep_customer_service_and_blocking_issue_as_one_open_bundle_and_ask_all_missing_values",
+          "completion_invariant": "customer_service_and_blocking_issue_created_or_reused_with_customer_service_outbound_relation_verified",
+          "external_api_writes_are_sequential_not_atomic": true
+        },
         "write_sequence": [
           "validate_both_drafts_and_dedupe_results",
           "create_and_verify_customer_service",
@@ -280,6 +287,14 @@
           "field_key": "field_5e764e",
           "match_mode": "each_matching_option",
           "refresh_option_ids_before_write": true
+        },
+        "paired_creation_gate": {
+          "applies_to_all_authorized_policies": true,
+          "require_customer_service_and_all_matched_target_drafts_ready_before_any_create": true,
+          "do_not_create_customer_service_only": true,
+          "on_missing_target_values": "keep_the_entire_bundle_open_and_ask_all_missing_values_without_external_writes",
+          "completion_invariant": "customer_service_and_every_matched_target_created_or_reused_with_each_customer_service_outbound_relation_verified",
+          "external_api_writes_are_sequential_not_atomic": true
         },
         "policies": {
           "t3_content_maintenance": {
@@ -458,13 +473,7 @@
               "estimated_ready_date",
               "card_machine_quantity"
             ],
-            "paired_creation_gate": {
-              "require_customer_service_and_target_ready_before_any_create": true,
-              "do_not_create_customer_service_only": true,
-              "on_missing_target_values": "keep_customer_service_and_card_machine_as_one_open_bundle_and_ask_all_missing_values",
-              "completion_invariant": "customer_service_and_card_machine_created_or_reused_with_customer_service_outbound_relation_verified",
-              "external_api_writes_are_sequential_not_atomic": true
-            },
+            "inherits_shared_paired_creation_gate": true,
             "forbidden_inference": [
               "missing_card_machine_points",
               "missing_monthly_fee_choice",
@@ -562,8 +571,9 @@
           }
         },
         "write_sequence": [
-          "validate_customer_service_and_each_target_draft",
+          "validate_customer_service_and_all_matched_target_drafts",
           "dedupe_each_target_type_independently",
+          "enforce_shared_paired_creation_gate_or_stop_before_any_external_write",
           "create_and_verify_customer_service",
           "reuse_or_create_and_verify_each_ready_target",
           "write_and_verify_each_customer_service_to_target_relation",
@@ -576,7 +586,7 @@
         },
         "partial_failure_policy": {
           "preserve_created_ids": true,
-          "allow_independent_ready_targets_to_continue": true,
+          "allow_independent_ready_targets_to_continue_before_bundle_gate": false,
           "never_recreate_bundle": true,
           "resume_only_missing_steps": true,
           "report_partial_completion": true

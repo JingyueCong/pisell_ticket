@@ -428,6 +428,23 @@ class PackageContractTests(unittest.TestCase):
             )
         )
         self.assertFalse(policies["handoff_to_yoko"])
+        gate = policies["paired_creation_gate"]
+        self.assertTrue(gate["applies_to_all_authorized_policies"])
+        self.assertTrue(
+            gate["require_customer_service_and_all_matched_target_drafts_ready_before_any_create"]
+        )
+        self.assertTrue(gate["do_not_create_customer_service_only"])
+        self.assertTrue(gate["external_api_writes_are_sequential_not_atomic"])
+        self.assertFalse(
+            policies["partial_failure_policy"][
+                "allow_independent_ready_targets_to_continue_before_bundle_gate"
+            ]
+        )
+        sequence = policies["write_sequence"]
+        self.assertLess(
+            sequence.index("enforce_shared_paired_creation_gate_or_stop_before_any_external_write"),
+            sequence.index("create_and_verify_customer_service"),
+        )
         self.assertTrue(
             policies["partial_failure_policy"]["resume_only_missing_steps"]
         )
@@ -452,7 +469,33 @@ class PackageContractTests(unittest.TestCase):
             )
             self.assertTrue(relations["refresh_before_write"])
 
-    def test_customer_card_machine_pairing_is_gated_until_both_drafts_are_ready(self) -> None:
+    def test_all_green_pairings_are_gated_until_every_draft_is_ready(self) -> None:
+        customer_service = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]
+        blocking_gate = customer_service["paired_blocking_issue_policy"]["paired_creation_gate"]
+        self.assertTrue(
+            blocking_gate["require_customer_service_and_blocking_draft_ready_before_any_create"]
+        )
+        self.assertTrue(blocking_gate["do_not_create_customer_service_only"])
+        self.assertTrue(blocking_gate["external_api_writes_are_sequential_not_atomic"])
+
+        business = customer_service["paired_business_work_item_policies"]
+        gate = business["paired_creation_gate"]
+        self.assertTrue(
+            gate["require_customer_service_and_all_matched_target_drafts_ready_before_any_create"]
+        )
+        self.assertTrue(gate["do_not_create_customer_service_only"])
+        self.assertIn("every_matched_target", gate["completion_invariant"])
+        self.assertEqual(
+            set(business["policies"]),
+            {
+                "t3_content_maintenance",
+                "t5_demand_pool",
+                "customer_card_machine",
+                "risk_control",
+            },
+        )
+
+    def test_customer_card_machine_preserves_required_fields_under_shared_gate(self) -> None:
         card = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]["policies"]["customer_card_machine"]
         self.assertEqual(card["trigger_option"]["option_name"], "客户刷卡机")
         self.assertEqual(
@@ -484,11 +527,7 @@ class PackageContractTests(unittest.TestCase):
                 "card_machine_quantity",
             },
         )
-        gate = card["paired_creation_gate"]
-        self.assertTrue(gate["require_customer_service_and_target_ready_before_any_create"])
-        self.assertTrue(gate["do_not_create_customer_service_only"])
-        self.assertTrue(gate["external_api_writes_are_sequential_not_atomic"])
-        self.assertIn("customer_service_and_card_machine", gate["completion_invariant"])
+        self.assertTrue(card["inherits_shared_paired_creation_gate"])
 
     def test_customer_card_machine_catalog_keeps_verified_reverse_relation(self) -> None:
         catalog = read_json("workspace/configuration/work-item-catalog.json")
