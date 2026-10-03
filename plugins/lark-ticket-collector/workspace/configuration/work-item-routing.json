@@ -159,6 +159,13 @@
       "paired_blocking_issue_policy": {
         "enabled": true,
         "authorized_at": "2026-10-02",
+        "optional_copy_policy": {
+          "copy_only_when_source_present": true,
+          "empty_source_never_blocks_target_creation": true,
+          "never_overwrite_explicit_target_value": true,
+          "refresh_and_verify_target_field_before_write": true,
+          "skip_missing_disabled_or_incompatible_target_field": true
+        },
         "trigger": {
           "field_key": "field_5e764e",
           "match_mode": "any",
@@ -197,7 +204,10 @@
         },
         "blocking_field_mapping": [
           {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+          {"target_field_key": "description", "target_field_name": "描述", "source": "customer_service.description", "copy_mode": "when_source_present"},
           {"target_field_key": "field_ef7f33", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
+          {"target_field_key": "field_2c534f", "target_field_name": "问题来源", "source": "customer_service.field_20a3c6", "copy_mode": "when_source_present"},
+          {"target_field_key": "field_91fbb2", "target_field_name": "商家问题提出人", "source": "customer_service.field_91fbb2", "copy_mode": "when_source_present"},
           {"target_field_key": "field_8318ee", "target_field_name": "店铺id", "source": "explicit_store_id_or_verified_crm_name_prefix"},
           {"target_field_key": "field_41737a", "target_field_name": "页面链接及说明", "source": "customer_service.description"},
           {"target_field_key": "field_c28813", "target_field_name": "描述补充", "source": "customer_service.description_and_evidence_summary"},
@@ -283,6 +293,13 @@
       "paired_business_work_item_policies": {
         "enabled": true,
         "authorized_at": "2026-10-03",
+        "shared_optional_copy_policy": {
+          "copy_only_when_source_present": true,
+          "empty_source_never_blocks_target_creation": true,
+          "never_overwrite_explicit_target_value": true,
+          "refresh_and_verify_target_field_before_write": true,
+          "skip_missing_disabled_or_incompatible_target_field": true
+        },
         "trigger": {
           "field_key": "field_5e764e",
           "match_mode": "each_matching_option",
@@ -339,6 +356,11 @@
               {"target_field_key": "description", "target_field_name": "任务描述", "source": "customer_service.description"},
               {"target_field_key": "priority", "target_field_name": "优先级", "source": "customer_service.field_636ce3_via_star_to_q_mapping"},
               {"target_field_key": "field_1e7f65", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
+              {"target_field_key": "field_2398ed", "target_field_name": "问题来源", "source": "customer_service.field_20a3c6", "copy_mode": "when_source_present"},
+              {"target_field_key": "field_ce6397", "target_field_name": "特殊情况备注", "source": "customer_service.field_4e18a5", "copy_mode": "when_source_present"},
+              {"target_field_key": "field_00ae6f", "target_field_name": "工单问题等级", "source": "customer_service.field_636ce3", "copy_mode": "when_source_present"},
+              {"target_field_key": "field_91fbb2", "target_field_name": "商家问题提出人", "source": "customer_service.field_91fbb2", "copy_mode": "when_source_present"},
+              {"target_field_key": "field_47cd28", "target_field_name": "预计完成时间", "source": "customer_service.field_8c5e5f", "copy_mode": "when_source_present"},
               {"target_field_key": "field_7e7ab1", "target_field_name": "客服工单", "source": "created_customer_service_id"},
               {"target_field_key": "field_581e1d", "target_field_name": "附件", "source": "content_semantic_bundle_attachments"}
             ],
@@ -409,6 +431,7 @@
             "field_mapping": [
               {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
               {"target_field_key": "description", "target_field_name": "描述", "source": "customer_service.description_and_expected_behavior"},
+              {"target_field_key": "priority", "target_field_name": "优先级", "source": "customer_service.priority", "copy_mode": "when_source_present"},
               {"target_field_key": "field_5cd576", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
               {"target_field_key": "field_9fc721", "target_field_name": "客服工单", "source": "created_customer_service_id"},
               {"target_field_key": "field_62493b", "target_field_name": "附件", "source": "demand_semantic_bundle_attachments"}
@@ -458,6 +481,7 @@
             "field_mapping": [
               {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
               {"target_field_key": "description", "target_field_name": "描述", "source": "customer_service.description"},
+              {"target_field_key": "priority", "target_field_name": "优先级", "source": "customer_service.priority", "copy_mode": "when_source_present"},
               {"target_field_key": "field_7bb02e", "target_field_name": "客户管理CRM", "source": "customer_service.field_5fe6c7"},
               {"target_field_key": "field_928eb4", "target_field_name": "关联客服工单", "source": "created_customer_service_id"},
               {"target_field_key": "field_9ef04c", "target_field_name": "刷卡机点数", "source": "explicit_card_machine_points"},
@@ -534,13 +558,15 @@
             },
             "field_mapping": [
               {"target_field_key": "name", "target_field_name": "名称", "source": "customer_service.name"},
+              {"target_field_key": "description", "target_field_name": "描述", "source": "customer_service.description", "copy_mode": "when_source_present"},
               {"target_field_key": "field_09ca04", "target_field_name": "客户管理", "source": "customer_service.field_5fe6c7"},
               {"target_field_key": "field_4bf86b", "target_field_name": "客服工单", "source": "created_customer_service_id"},
               {"target_field_key": "field_2c62ea", "target_field_name": "Pisell 订单号", "source": "explicit_order_number"},
               {"target_field_key": "field_bcdfab", "target_field_name": "Chargeback 金额", "source": "explicit_chargeback_amount"},
               {"target_field_key": "field_85f9ea", "target_field_name": "风控来源", "source": "explicit_risk_source"},
               {"target_field_key": "field_6e633f", "target_field_name": "Chargeback 原因", "source": "explicit_chargeback_reason"},
-              {"target_field_key": "field_e24bc3", "target_field_name": "MW 通知截图", "source": "risk_notice_semantic_bundle_attachment"}
+              {"target_field_key": "field_e24bc3", "target_field_name": "MW 通知截图", "source": "risk_notice_semantic_bundle_attachment"},
+              {"target_field_key": "field_eb7afd", "target_field_name": "附件", "source": "general_risk_bundle_attachments", "copy_mode": "when_source_present"}
             ],
             "required_create_role": {
               "role_key_snapshot": "role_b5881d",

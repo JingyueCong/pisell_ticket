@@ -387,6 +387,26 @@ class PackageContractTests(unittest.TestCase):
         )
         self.assertTrue(policy["partial_failure_policy"]["never_recreate_bundle"])
 
+    def test_blocking_pairing_copies_verified_shared_fields_only_when_present(self) -> None:
+        policy = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_blocking_issue_policy"]
+        optional_copy = policy["optional_copy_policy"]
+        self.assertTrue(optional_copy["copy_only_when_source_present"])
+        self.assertTrue(optional_copy["empty_source_never_blocks_target_creation"])
+        self.assertTrue(optional_copy["never_overwrite_explicit_target_value"])
+
+        mapped = {
+            field["target_field_key"]: field
+            for field in policy["blocking_field_mapping"]
+        }
+        expected = {
+            "description": "customer_service.description",
+            "field_2c534f": "customer_service.field_20a3c6",
+            "field_91fbb2": "customer_service.field_91fbb2",
+        }
+        for field_key, source in expected.items():
+            self.assertEqual(mapped[field_key]["source"], source)
+            self.assertEqual(mapped[field_key]["copy_mode"], "when_source_present")
+
     def test_blocking_issue_internal_discoverer_is_conditional(self) -> None:
         blocking = read_json("workspace/configuration/work-item-routing.json")["types"]["blocking_issue"]
         policy = blocking["feedback_type_policy"]
@@ -568,6 +588,47 @@ class PackageContractTests(unittest.TestCase):
         )
         self.assertIn(
             "missing_confirmation_to_false", content["forbidden_inference"]
+        )
+
+    def test_business_pairings_copy_all_verified_shared_fields_conditionally(self) -> None:
+        business = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]
+        optional_copy = business["shared_optional_copy_policy"]
+        self.assertTrue(optional_copy["copy_only_when_source_present"])
+        self.assertTrue(optional_copy["empty_source_never_blocks_target_creation"])
+        self.assertTrue(optional_copy["never_overwrite_explicit_target_value"])
+        policies = business["policies"]
+
+        expected = {
+            "t3_content_maintenance": {
+                "field_2398ed": "customer_service.field_20a3c6",
+                "field_ce6397": "customer_service.field_4e18a5",
+                "field_00ae6f": "customer_service.field_636ce3",
+                "field_91fbb2": "customer_service.field_91fbb2",
+                "field_47cd28": "customer_service.field_8c5e5f",
+            },
+            "t5_demand_pool": {
+                "priority": "customer_service.priority",
+            },
+            "customer_card_machine": {
+                "priority": "customer_service.priority",
+            },
+            "risk_control": {
+                "description": "customer_service.description",
+                "field_eb7afd": "general_risk_bundle_attachments",
+            },
+        }
+        for policy_name, expected_fields in expected.items():
+            mapped = {
+                field["target_field_key"]: field
+                for field in policies[policy_name]["field_mapping"]
+            }
+            for field_key, source in expected_fields.items():
+                self.assertEqual(mapped[field_key]["source"], source)
+                self.assertEqual(mapped[field_key]["copy_mode"], "when_source_present")
+
+        self.assertIn(
+            "customer_service_stars_to_demand_priority",
+            policies["t5_demand_pool"]["forbidden_inference"],
         )
 
     def test_demand_and_risk_pairings_preserve_target_specific_requirements(self) -> None:
