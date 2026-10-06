@@ -7,6 +7,7 @@ import { LarkTicketService } from "./lark-service.js";
 import { logger } from "./logger.js";
 import { MeegleIdentityManager } from "./meegle-identity.js";
 import { BridgeStore } from "./store.js";
+import { VisitRecordLoader } from "./visit-record.js";
 
 function startHealthServer(input: {
   host: string;
@@ -42,7 +43,16 @@ async function main(): Promise<void> {
   const identityManager = config.meegleIdentity.enabled
     ? new MeegleIdentityManager(config)
     : undefined;
-  const service = new LarkTicketService(config, store, agent, identityManager);
+  const visitRecordLoader = config.lark.visitRecordChatIds.length
+    ? new VisitRecordLoader(config)
+    : undefined;
+  const service = new LarkTicketService(
+    config,
+    store,
+    agent,
+    identityManager,
+    visitRecordLoader,
+  );
   let ready = false;
   let shuttingDown = false;
   const health = startHealthServer({
@@ -74,6 +84,7 @@ async function main(): Promise<void> {
     allowedChatCount: config.lark.allowedChatIds.length,
     allowedSenderCount: config.lark.allowedSenderIds.length,
     perUserMeegleAuth: config.meegleIdentity.enabled,
+    visitRecordChatCount: config.lark.visitRecordChatIds.length,
     workspace: config.codex.workspace,
   });
 }

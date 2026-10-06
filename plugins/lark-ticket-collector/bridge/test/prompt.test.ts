@@ -91,6 +91,54 @@ test("conversation key isolates senders and ticket threads in the same chat", ()
   );
 });
 
+test("prompt locks trusted Feishu Minutes evidence to one onsite service ticket", () => {
+  const prompt = buildAgentPrompt({
+    resourceRoot: "/tmp/resources",
+    history: [],
+    envelope: {
+      messageId: "om_visit",
+      chatId: "oc_customer",
+      chatType: "group",
+      senderId: "ou_visitor",
+      senderName: "Yvonne",
+      content: "https://example.feishu.cn/minutes/obcnutest123",
+      rawContentType: "text",
+      createTime: 1,
+      resources: [],
+      routePolicy: {
+        mode: "customer_only",
+        authoritative: true,
+        reason: "trusted_visit_record_minutes_trigger",
+        customerIssueOption: "上门服务工单",
+      },
+      visitRecord: {
+        sourceChatId: "oc_customer",
+        sourceChatName: "Little Amigos Kidscafe Highpoint 客户群",
+        minuteToken: "obcnutest123",
+        minuteUrl: "https://example.feishu.cn/minutes/obcnutest123",
+        title: "现场沟通",
+        summary: "讨论 POS 卡慢和菜单调整。",
+        chapters: [{ title: "POS", summary: "付款偶发卡慢" }],
+        todos: [{ content: "Yvonne 跟进日志", assignees: ["Yvonne"] }],
+        keywords: ["POS", "菜单"],
+        transcriptPath: "/tmp/resources/om_visit/minute/transcript.txt",
+        fetchedAt: 2,
+      },
+    },
+  });
+
+  assert.match(prompt, /source_chat_name: Little Amigos Kidscafe Highpoint 客户群/);
+  assert.match(prompt, /minute_title: 现场沟通/);
+  assert.match(prompt, /smart_summary: 讨论 POS 卡慢和菜单调整/);
+  assert.match(prompt, /transcript_file: \/tmp\/resources\/om_visit\/minute\/transcript\.txt/);
+  assert.match(prompt, /本轮固定只创建一张客服工单/);
+  assert.match(prompt, /对应问题类型.*上门服务工单/);
+  assert.match(prompt, /不得从会议中的问题点触发 T1\/T2\/T3\/T5/);
+  assert.match(prompt, /完整逐字稿/);
+  assert.match(prompt, /原始妙记链接/);
+  assert.match(prompt, /待内部评估/);
+});
+
 test("prompt includes active structured draft without treating it as Meegle truth", () => {
   const prompt = buildAgentPrompt({
     resourceRoot: "/tmp/resources",

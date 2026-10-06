@@ -19,6 +19,7 @@ const RISK_CONTROL = /风控(?:处理|工单|工作项)?|chargeback|拒付/iu;
 const BLOCKING_STANDALONE = /阻断性问题|t\s*-?\s*bug/u;
 const CUSTOMER_SERVICE = /客服工单/u;
 const CUSTOMER_ONLY = /商务类|内部(?:定期)?跟进|客户情绪|公关危机/u;
+const VISIT_RECORD = /上门服务|现场记录|会议记录|录音工单/u;
 
 const OTHER_EXPLICIT_TYPES =
   /开发进度|产品功能|客户管理\s*crm|\bcrm\b|商机跟进|版本迭代|验收记录|预工单|硬件库|组件开发|数据基建/iu;
@@ -154,6 +155,15 @@ export function deriveIntakeRoutePolicy(content: string): IntakeRoutePolicy {
       authoritative: true,
       ...(T4.test(text) ? { customerIssueOption: "T4流转商务类" } : {}),
       reason: T4.test(text) ? "t4_creation_alias" : "customer_only_issue_alias",
+    };
+  }
+
+  if (VISIT_RECORD.test(text)) {
+    return {
+      mode: "customer_only",
+      authoritative: true,
+      customerIssueOption: "上门服务工单",
+      reason: "visit_record_customer_service_alias",
     };
   }
 

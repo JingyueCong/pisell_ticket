@@ -18,6 +18,7 @@ function config(dataDir: string): BridgeConfig {
       cliProfile: "lark-admin",
       cliBin: "lark-cli",
       allowedChatIds: [],
+      visitRecordChatIds: [],
       allowedSenderIds: [],
       requireMention: true,
     },

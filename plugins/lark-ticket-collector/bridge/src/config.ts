@@ -25,6 +25,7 @@ const schema = z.object({
   ALLOWED_SENDER_IDS: z.string().default(""),
   YOKO_HANDOFF_CHAT_ID: optionalString,
   CONTENT_PRODUCER_SOURCE_CHAT_ID: optionalString,
+  VISIT_RECORD_CHAT_IDS: z.string().default(""),
   REQUIRE_MENTION: booleanValue,
   BRIDGE_WORKSPACE: z.string().min(1),
   CODEX_BIN: z.string().default("codex"),
@@ -136,6 +137,7 @@ export interface BridgeConfig {
     requireMention: boolean;
     contentMaintenanceProducerSource?: ContentMaintenanceProducerSourceConfig;
     handoffChatId?: string;
+    visitRecordChatIds: string[];
   };
   meegleIdentity: {
     enabled: boolean;
@@ -193,6 +195,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       ...(contentMaintenanceProducerSource
         ? { contentMaintenanceProducerSource }
         : {}),
+      visitRecordChatIds: list(parsed.VISIT_RECORD_CHAT_IDS),
     },
     meegleIdentity: {
       enabled: parsed.PER_USER_MEEGLE_AUTH,

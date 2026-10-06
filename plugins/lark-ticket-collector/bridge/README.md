@@ -14,6 +14,7 @@
 - SQLite 记录消息状态并按飞书 `message_id` 幂等。同一消息失败后不会自动重放，以免外部写入结果不明时重复建单。
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
+- 可把指定客户群配置为“上门服务会议群”：群内发送一条飞书妙记链接后，无需 @ 机器人，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务工单”客服主单。群内其他普通消息仍遵守 `REQUIRE_MENTION`。
 - 可启用员工级 Meegle OAuth：每位员工首次使用时绑定自己的身份，之后由该员工身份执行查重、创建、更新、附件和回读，系统“创建人”因此等于飞书消息提交人；禁止回退到 Echo 或其他共用账号。
 
 ## 架构
@@ -33,7 +34,7 @@
 
 在飞书开放平台创建企业自建应用并启用机器人能力：
 
-1. 在权限管理中至少申请 `im:message`、`im:message:send_as_bot`、`im:resource` 和 `im:chat.members:read`。启用员工级 Meegle OAuth 时，还要让 `LARK_CLI_PROFILE` 的用户授权 `contact:user:search`，用于核对 OAuth 账号确实属于当前消息发送者。如果机器人只接收群内 @ 消息，可按飞书控制台提示申请对应的群 @ 消息权限；如果要读取群内所有消息，需申请更高范围的群消息权限。
+1. 在权限管理中至少申请 `im:message`、`im:message:send_as_bot`、`im:resource` 和 `im:chat.members:read`。启用员工级 Meegle OAuth 时，还要让 `LARK_CLI_PROFILE` 的用户授权 `contact:user:search`，用于核对 OAuth 账号确实属于当前消息发送者。启用上门服务会议自动收单时，应用还必须能接收群内非 @ 消息；`LARK_CLI_PROFILE` 对应用户需要授权 `minutes:minutes.basic:read`，并且该账号本身能访问目标妙记。如果机器人只接收群内 @ 消息，可按飞书控制台提示申请对应的群 @ 消息权限；如果要读取群内所有消息，需申请更高范围的群消息权限。
 2. 在事件订阅中选择“使用长连接接收事件”，订阅 `im.message.receive_v1`。
 3. 发布应用版本并通过管理员审核。
 4. 将机器人加入准备用于收单的群；机器人必须有发言权限。
@@ -80,6 +81,8 @@ ALLOWED_SENDER_IDS=ou_xxx,ou_yyy
 REQUIRE_MENTION=true
 YOKO_HANDOFF_CHAT_ID=oc_yoko_group
 CONTENT_PRODUCER_SOURCE_CHAT_ID=oc_content_group
+# 指定客户群中发送飞书妙记链接时自动创建上门服务客服主单，多个群用逗号分隔。
+VISIT_RECORD_CHAT_IDS=oc_customer_a,oc_customer_b
 BRIDGE_WORKSPACE=/srv/pisell-ticket-workspace
 PER_USER_MEEGLE_AUTH=true
 MEEGLE_BIN=/absolute/path/to/meegle
@@ -95,6 +98,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `ALLOWED_SENDER_IDS`：允许使用的员工，逗号分隔。
 - `YOKO_HANDOFF_CHAT_ID`：阻断性问题自动交接群；留空则只创建工单、不发 Yoko 通知。
 - `CONTENT_PRODUCER_SOURCE_CHAT_ID`：内容维护制作人来源群；留空则无法自动读取制作人。
+- `VISIT_RECORD_CHAT_IDS`：上门服务客户群，逗号分隔。群内出现且仅出现一个飞书妙记链接时自动处理，不需要 @；链接所在群的群名仅用作 CRM 客户检索线索，唯一匹配后才填写客户。单纯上传音频文件或发送普通文本不会自动建单。
 - `PER_USER_MEEGLE_AUTH=true`：每位员工首次发消息时收到个人 OAuth 链接；完成后回复“已授权”，验证通过后重新发送原工单和附件。未授权、授权错账号或凭证失效时不会运行 Agent，也不会借用其他人的账号。
 - `MEEGLE_PROFILE_OVERRIDES`：可选的 `sender_open_id=meegle_profile` 映射，逗号分隔，仅用于复用已经存在且属于该员工自己的 profile。没有映射的员工自动使用由 open_id 单向派生的独立 profile。
 - `LARK_CLI_BIN`、`MEEGLE_BIN`：后台服务使用的绝对 CLI 路径，避免 launchd 等无交互环境的 PATH 不完整。
@@ -141,6 +145,18 @@ Nick 扣款任务：请检查该订单是否需要扣款
 
 结构化草稿只是续填上下文，不是 Meegle 的权威状态。每次外部写入仍会实时查重、刷新字段元数据并回读验证；草稿不会绕过更新确认或附件要求。
 
+### 上门服务会议自动收单
+
+先在客服工单的“对应问题类型”字段中新增并启用选项 `上门服务工单`。随后把客户群加入 `VISIT_RECORD_CHAT_IDS`。会议结束且飞书妙记已生成后，在该客户群发送妙记链接即可自动触发：
+
+```text
+https://tenant.feishu.cn/minutes/obcnu...
+```
+
+服务会读取群名作为客户线索，读取妙记智能总结与完整逐字稿，并整理现场背景、全部问题、影响、客户期望、客户提出的办法、会议确认方案、未确认项、行动项、负责人和时间。当前阶段只创建一张客服主单，不会从纪要直接拆出 T1/T2/T3/T5 等配套工单；原始妙记链接会保留在问题描述中，方便后续人工或自动拆票。
+
+自动触发依赖“妙记链接被发送到目标群”，不是监听录音停止事件。飞书的妙记生成事件不包含来源客户群，单靠该事件无法可靠判断客户；以链接所在群为客户上下文可避免跨群串单。若妙记尚未生成、未共享给读取账号、权限不足、消息含多个妙记链接或 CRM 客户无法唯一匹配，服务不会猜测或先建半张单，而会在原消息下提示补充。
+
 ## 5. 常驻运行
 
 开发验证可直接使用上面的 Node 命令。生产环境请交给 systemd、supervisord、容器编排或公司的进程托管平台，并至少配置：
@@ -156,6 +172,9 @@ Nick 扣款任务：请检查该订单是否需要扣款
 - 收不到消息：检查应用是否已发布、机器人是否在群中、长连接事件是否为 `im.message.receive_v1`，以及群/发送人白名单。
 - 能收消息但无法回复：检查机器人发言权限和 `im:message:send_as_bot`。
 - 附件下载失败：检查 `im:resource`，并确认附件属于当前消息且未超过 `MAX_RESOURCE_BYTES`。
+- 上门服务链接没有触发：确认群 ID 在 `VISIT_RECORD_CHAT_IDS`，应用能接收该群的非 @ 消息，机器人仍在群内，并且消息中是可识别的 `/minutes/<token>` 链接。
+- 上门服务提示妙记不可读：确认 `LARK_CLI_PROFILE` 的用户已授权 `minutes:minutes.basic:read`，该用户能在飞书中打开该妙记，而且妙记已经生成完成。
+- 上门服务卡在字段：确认客服工单“对应问题类型”已有启用选项 `上门服务工单`；bridge 不会用其他问题类型代替。
 - `doctor` 中 Meegle 失败：确认 `MEEGLE_BIN` 路径正确；未启用员工 OAuth 时重新完成 `meegle auth login --host project.feishu.cn`。
 - 首次使用一直提示未授权：先打开机器人返回的个人授权链接完成登录，再回复“已授权”；授权链接过期后重新发送工单取得新链接。
 - 身份验证失败：确认 `LARK_CLI_PROFILE` 已授权 `contact:user:search`，且员工在 OAuth 页面登录的是自己的飞书项目账号。

@@ -56,6 +56,33 @@ export interface MeegleRequestIdentity {
   email?: string;
 }
 
+export interface VisitRecordChapter {
+  title?: string;
+  startMs?: string;
+  stopMs?: string;
+  summary?: string;
+}
+
+export interface VisitRecordTodo {
+  content?: string;
+  assignees?: string[];
+  isDone?: boolean;
+}
+
+export interface VisitRecordEvidence {
+  sourceChatId: string;
+  sourceChatName: string;
+  minuteToken: string;
+  minuteUrl: string;
+  title?: string;
+  summary?: string;
+  chapters: VisitRecordChapter[];
+  todos: VisitRecordTodo[];
+  keywords: string[];
+  transcriptPath?: string;
+  fetchedAt: number;
+}
+
 export type PairedWorkItemType =
   | "blocking_issue"
   | "content_maintenance"
@@ -87,6 +114,7 @@ export interface InboundEnvelope {
   resources: DownloadedResource[];
   routePolicy?: IntakeRoutePolicy;
   contentMaintenanceProducerSource?: ContentMaintenanceProducerSource;
+  visitRecord?: VisitRecordEvidence;
   meegleIdentity?: MeegleRequestIdentity;
 }
 

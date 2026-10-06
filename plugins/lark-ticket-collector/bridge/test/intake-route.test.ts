@@ -56,6 +56,21 @@ test("generic creation starts from customer service while other explicit types r
   assert.equal(deriveIntakeRoutePolicy("创建一个 CRM 工单").mode, "unspecified");
 });
 
+test("visit-record aliases create only the onsite customer-service main ticket", () => {
+  for (const input of [
+    "创建上门服务工单",
+    "给我建一个现场记录工单",
+    "提交会议记录工单",
+    "创建录音工单",
+  ]) {
+    const route = deriveIntakeRoutePolicy(input);
+    assert.equal(route.mode, "customer_only", input);
+    assert.equal(route.customerIssueOption, "上门服务工单", input);
+    assert.equal(route.pairedWorkItemType, undefined, input);
+    assert.equal(route.authoritative, true, input);
+  }
+});
+
 test("queries, updates, and follow-ups do not start a new locked route", () => {
   for (const input of [
     "查询内容维护工单 #7130002718",

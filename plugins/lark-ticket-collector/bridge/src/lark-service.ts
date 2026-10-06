@@ -25,7 +25,14 @@ import type {
   DownloadedResource,
   InboundEnvelope,
   MeegleRequestIdentity,
+  VisitRecordEvidence,
 } from "./types.js";
+import {
+  extractMinuteLinks,
+  isAutomaticVisitRecordMessage,
+  VisitRecordError,
+  VisitRecordLoader,
+} from "./visit-record.js";
 
 function safeName(resource: ResourceDescriptor, index: number): string {
   const fallbackExtension =
@@ -71,16 +78,27 @@ export class LarkTicketService {
     private readonly store: BridgeStore,
     private readonly agent: AgentBackend,
     private readonly identityManager?: MeegleIdentityManager,
+    private readonly visitRecordLoader?: VisitRecordLoader,
   ) {
+    const allowedGroupIds = [
+      ...new Set([
+        ...config.lark.allowedChatIds,
+        ...config.lark.visitRecordChatIds,
+      ]),
+    ];
     const policy = {
-      ...(config.lark.allowedChatIds.length
-        ? { groupAllowlist: config.lark.allowedChatIds }
+      ...(allowedGroupIds.length
+        ? { groupAllowlist: allowedGroupIds }
         : {}),
       dmMode: config.lark.allowedSenderIds.length ? ("allowlist" as const) : ("open" as const),
       ...(config.lark.allowedSenderIds.length
         ? { dmAllowlist: config.lark.allowedSenderIds }
         : {}),
-      requireMention: config.lark.requireMention,
+      // Automatic visit-record groups need non-mention Minutes links to reach
+      // the bridge. registerHandlers applies the narrower per-message gate.
+      requireMention: config.lark.visitRecordChatIds.length
+        ? false
+        : config.lark.requireMention,
       respondToMentionAll: false,
     };
 
@@ -119,6 +137,20 @@ export class LarkTicketService {
 
   private registerHandlers(): void {
     this.channel.on("message", (message) => {
+      const automaticVisitRecord = isAutomaticVisitRecordMessage({
+        chatId: message.chatId,
+        chatType: message.chatType,
+        content: message.content,
+        visitRecordChatIds: this.config.lark.visitRecordChatIds,
+      });
+      if (
+        message.chatType === "group" &&
+        this.config.lark.requireMention &&
+        !message.mentionedBot &&
+        !automaticVisitRecord
+      ) {
+        return;
+      }
       if (
         this.config.lark.allowedSenderIds.length > 0 &&
         !this.config.lark.allowedSenderIds.includes(message.senderId)
@@ -158,6 +190,12 @@ export class LarkTicketService {
   }
 
   private async processMessage(message: NormalizedMessage): Promise<void> {
+    const automaticVisitRecord = isAutomaticVisitRecordMessage({
+      chatId: message.chatId,
+      chatType: message.chatType,
+      content: message.content,
+      visitRecordChatIds: this.config.lark.visitRecordChatIds,
+    });
     const claimed = this.store.claimMessage({
       messageId: message.messageId,
       chatId: message.chatId,
@@ -223,7 +261,9 @@ export class LarkTicketService {
         message.chatId,
         {
           markdown:
-            "已收到，正在处理工单。字段核验、查重和回读通常需要几分钟，完成后会在此消息下回复。",
+            automaticVisitRecord
+              ? "已识别上门服务会议记录，正在读取飞书智能纪要、匹配客户并生成客服工单。完成后会在此消息下回复。"
+              : "已收到，正在处理工单。字段核验、查重和回读通常需要几分钟，完成后会在此消息下回复。",
         },
         { replyTo: message.messageId },
       );
@@ -235,9 +275,12 @@ export class LarkTicketService {
     }
 
     try {
-      const [resources, producerSource] = await Promise.all([
+      const [resources, producerSource, visitRecord] = await Promise.all([
         this.downloadResources(message),
         this.readContentMaintenanceProducerSource(),
+        automaticVisitRecord
+          ? this.readVisitRecord(message)
+          : Promise.resolve(undefined),
       ]);
       this.store.saveResources(message.messageId, resources);
       const envelope = this.toEnvelope(
@@ -245,6 +288,7 @@ export class LarkTicketService {
         resources,
         producerSource,
         meegleIdentity,
+        visitRecord,
       );
       const messageKey = conversationKey(envelope);
       const activeDraft = this.store.activeDraft({
@@ -308,9 +352,17 @@ export class LarkTicketService {
       this.store.failMessage(message.messageId, reason);
       logger.error("message.failed", { messageId: message.messageId, error: reason });
       try {
+        const reply =
+          error instanceof VisitRecordError
+            ? [
+                "没有创建工单：飞书妙记尚未能被服务读取。",
+                reason,
+                "请确认妙记已生成完成、已共享给当前飞书账号，并由管理员补齐妙记读取权限后，重新发送同一妙记链接。",
+              ].join("\n")
+            : errorMessage(message.messageId);
         await this.channel.send(
           message.chatId,
-          { markdown: errorMessage(message.messageId) },
+          { markdown: reply },
           { replyTo: message.messageId },
         );
       } catch (replyError) {
@@ -383,6 +435,7 @@ export class LarkTicketService {
     resources: DownloadedResource[],
     contentMaintenanceProducerSource?: ContentMaintenanceProducerSource,
     meegleIdentity?: MeegleRequestIdentity,
+    visitRecord?: VisitRecordEvidence,
   ): InboundEnvelope {
     return {
       messageId: message.messageId,
@@ -397,12 +450,54 @@ export class LarkTicketService {
       ...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
       createTime: message.createTime,
       resources,
-      routePolicy: deriveIntakeRoutePolicy(message.content),
+      routePolicy: visitRecord
+        ? {
+            mode: "customer_only",
+            authoritative: true,
+            customerIssueOption: "上门服务工单",
+            reason: "trusted_visit_record_minutes_trigger",
+          }
+        : deriveIntakeRoutePolicy(message.content),
       ...(meegleIdentity ? { meegleIdentity } : {}),
+      ...(visitRecord ? { visitRecord } : {}),
       ...(contentMaintenanceProducerSource
         ? { contentMaintenanceProducerSource }
         : {}),
     };
+  }
+
+  private async readVisitRecord(
+    message: NormalizedMessage,
+  ): Promise<VisitRecordEvidence> {
+    if (!this.visitRecordLoader) {
+      throw new VisitRecordError("上门服务妙记读取器未启用");
+    }
+    const links = extractMinuteLinks(message.content);
+    if (links.length !== 1) {
+      throw new VisitRecordError(
+        links.length
+          ? "一条消息包含多个妙记链接；请每条消息只发送一个会议记录"
+          : "消息中没有找到可读取的飞书妙记链接",
+      );
+    }
+    let sourceChatName: string;
+    try {
+      const chat = await this.channel.getChatInfo(message.chatId);
+      sourceChatName = chat.name?.trim() ?? "";
+    } catch (error) {
+      throw new VisitRecordError(
+        `无法读取来源群名称：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!sourceChatName) {
+      throw new VisitRecordError("来源群没有可读取的群名称，无法自动匹配客户");
+    }
+    return this.visitRecordLoader.load({
+      messageId: message.messageId,
+      sourceChatId: message.chatId,
+      sourceChatName,
+      link: links[0]!,
+    });
   }
 
   private async readContentMaintenanceProducerSource(): Promise<

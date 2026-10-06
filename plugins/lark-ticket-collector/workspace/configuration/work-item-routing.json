@@ -85,7 +85,7 @@
       "display_name": "客服工单",
       "api_name": "kfgd",
       "type_key": "6886d47112cff2ae4ae279e3",
-      "intent_terms": ["客服工单", "客户咨询", "客户请求", "商家反馈", "运营跟进", "售后"],
+      "intent_terms": ["客服工单", "客户咨询", "客户请求", "商家反馈", "运营跟进", "售后", "上门服务", "现场记录", "会议录音", "妙记工单"],
       "merchant_origin_default_routing": {
         "enabled": true,
         "applies_when_request_is_generic_create": true,
@@ -121,7 +121,8 @@
           {"alias": "T3 or 内容维护", "mode": "customer_bundle", "customer_option_name": "T3客户代运营请求-内容维护", "paired_type": "content_maintenance"},
           {"alias": "T5 or 功能建议/改进", "mode": "customer_bundle", "customer_option_name": "T5功能建议/改进类-需求", "paired_type": "demand_pool"},
           {"alias": "客户刷卡机", "mode": "customer_bundle", "customer_option_name": "客户刷卡机", "paired_type": "customer_card_machine"},
-          {"alias": "风控处理 or Chargeback", "mode": "customer_bundle", "customer_option_name": "风控处理", "paired_type": "risk_control"}
+          {"alias": "风控处理 or Chargeback", "mode": "customer_bundle", "customer_option_name": "风控处理", "paired_type": "risk_control"},
+          {"alias": "上门服务 or 现场记录 or 飞书妙记", "mode": "customer_only", "customer_option_name": "上门服务工单"}
         ],
         "standalone_override_terms": ["单独创建", "独立创建", "仅创建", "只创建", "不要客服工单"],
         "content_maintenance_default": "customer_service_plus_t3_content_maintenance"
@@ -176,6 +177,29 @@
       "attachment_field": {
         "field_key": "field_f0d460",
         "field_name": "附件"
+      },
+      "visit_record_policy": {
+        "enabled_by_env": "VISIT_RECORD_CHAT_IDS",
+        "automatic_trigger": "one readable Feishu Minutes URL posted in a configured customer group",
+        "require_mention": false,
+        "source_option_name": "线下销售 / 运营转述",
+        "issue_type_option_name": "上门服务工单",
+        "create_paired_work_items": false,
+        "customer_hint_source": "trusted source chat name",
+        "customer_match": "unique CRM match required",
+        "description_sections": [
+          "现场背景",
+          "涉及客户店铺系统设备",
+          "全部问题点及逐项现状影响",
+          "客户期望",
+          "客户提出的办法",
+          "会议已确认方案",
+          "未确认事项",
+          "行动项负责人时间",
+          "原始妙记链接"
+        ],
+        "read_full_transcript_when_available": true,
+        "never_invent_solution_or_root_cause": true
       },
       "paired_blocking_issue_policy": {
         "enabled": true,

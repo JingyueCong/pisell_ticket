@@ -13,6 +13,7 @@ test("loadConfig parses allowlists and resolves paths", () => {
     LARK_CLI_PROFILE: "cli_test",
     LARK_CLI_BIN: "/opt/bin/lark-cli",
     ALLOWED_CHAT_IDS: "oc_a, oc_b",
+    VISIT_RECORD_CHAT_IDS: "oc_visit_a, oc_visit_b",
     ALLOWED_SENDER_IDS: "ou_a",
     YOKO_HANDOFF_CHAT_ID: "oc_yoko",
     REQUIRE_MENTION: "false",
@@ -27,6 +28,7 @@ test("loadConfig parses allowlists and resolves paths", () => {
   });
 
   assert.deepEqual(config.lark.allowedChatIds, ["oc_a", "oc_b"]);
+  assert.deepEqual(config.lark.visitRecordChatIds, ["oc_visit_a", "oc_visit_b"]);
   assert.deepEqual(config.lark.allowedSenderIds, ["ou_a"]);
   assert.equal(config.lark.requireMention, false);
   assert.equal(config.lark.cliBin, "/opt/bin/lark-cli");
@@ -106,6 +108,7 @@ test("loadConfig disables optional target features when their env vars are empty
     });
     assert.equal(config.lark.contentMaintenanceProducerSource, undefined);
     assert.equal(config.lark.handoffChatId, undefined);
+    assert.deepEqual(config.lark.visitRecordChatIds, []);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
