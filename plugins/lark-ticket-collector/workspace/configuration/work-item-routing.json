@@ -188,6 +188,8 @@
         "customer_hint_source": "trusted source chat name",
         "customer_match": "unique CRM match required",
         "description_sections": [
+          "检索摘要（5-12条：[模块/设备] 问题或诉求 — 影响 — 当前状态/已确认方案）",
+          "检索关键词（5-15个客户店铺系统设备功能现象具体词）",
           "现场背景",
           "涉及客户店铺系统设备",
           "全部问题点及逐项现状影响",
@@ -198,6 +200,7 @@
           "行动项负责人时间",
           "原始妙记链接"
         ],
+        "search_sections_field": "问题描述",
         "read_full_transcript_when_available": true,
         "never_invent_solution_or_root_cause": true
       },

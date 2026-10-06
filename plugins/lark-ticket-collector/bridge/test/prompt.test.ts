@@ -145,6 +145,12 @@ test("prompt locks trusted Feishu Minutes evidence to one onsite service ticket"
   assert.match(prompt, /对应问题类型.*上门服务/);
   assert.match(prompt, /不得从会议中的问题点触发 T1\/T2\/T3\/T5/);
   assert.match(prompt, /完整逐字稿/);
+  assert.match(prompt, /检索摘要/);
+  assert.match(prompt, /5–12 条简短要点/);
+  assert.match(prompt, /\[模块\/设备\].*影响.*当前状态\/已确认方案/);
+  assert.match(prompt, /检索关键词/);
+  assert.match(prompt, /5–15 个可直接搜索的具体词/);
+  assert.match(prompt, /必须写入客服工单的“问题描述”/);
   assert.match(prompt, /原始妙记链接/);
   assert.match(prompt, /待内部评估/);
 });
