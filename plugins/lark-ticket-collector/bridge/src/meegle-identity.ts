@@ -335,7 +335,14 @@ export class MeegleIdentityManager {
     const names = new Set<string>();
     const emails = new Set<string>();
     for (const object of source) {
-      for (const key of ["name", "name_cn", "name_en", "en_name", "display_name"]) {
+      for (const key of [
+        "name",
+        "name_cn",
+        "name_en",
+        "en_name",
+        "display_name",
+        "localized_name",
+      ]) {
         const value = stringValue(object[key]);
         if (value) names.add(value);
       }

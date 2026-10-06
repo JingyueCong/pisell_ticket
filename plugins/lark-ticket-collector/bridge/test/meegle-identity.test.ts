@@ -58,7 +58,7 @@ test("per-user authorization binds a verified sender and reuses only that profil
       return {
         exitCode: 0,
         stdout: JSON.stringify({
-          data: [{ open_id: "ou_alice", name: "Alice", email: "alice@pisell.com" }],
+          data: { users: [{ open_id: "ou_alice", localized_name: "Alice" }] },
         }),
         stderr: "",
       };
