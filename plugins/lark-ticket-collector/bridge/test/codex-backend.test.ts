@@ -5,6 +5,7 @@ import {
   AGENT_OUTPUT_SCHEMA,
   buildCodexArgs,
   parseAgentOutput,
+  resolveExecutablePath,
 } from "../src/codex-backend.js";
 import type { BridgeConfig } from "../src/config.js";
 import type { AgentRequest } from "../src/types.js";
@@ -77,6 +78,62 @@ test("Codex CLI args use automatic approval without a conflicting sandbox flag",
   );
   assert.ok(!args.includes("--sandbox"));
   assert.ok(!args.includes("-s"));
+});
+
+test("verified Meegle identity is pinned into Codex command environment", () => {
+  const args = buildCodexArgs({
+    config: {
+      ...config,
+      meegleIdentity: { ...config.meegleIdentity, bin: "/opt/bin/meegle-real" },
+    },
+    request: {
+      ...request,
+      envelope: {
+        ...request.envelope,
+        meegleIdentity: {
+          profile: "lark-yvonne",
+          userKey: "user_yvonne",
+          name: "Yvonne",
+        },
+      },
+    },
+    outputPath: "/tmp/output.md",
+    schemaPath: "/tmp/output.schema.json",
+    meegleWrapperDirectory: "/srv/bridge/bin",
+  });
+
+  const overrides = args
+    .map((value, index) => (value === "-c" ? args[index + 1] : undefined))
+    .filter((value): value is string => Boolean(value));
+  assert.ok(overrides.includes("features.shell_snapshot=false"));
+  assert.ok(
+    overrides.includes(
+      `shell_environment_policy.set.MEEGLE_REQUEST_PROFILE=${JSON.stringify("lark-yvonne")}`,
+    ),
+  );
+  assert.ok(
+    overrides.includes(
+      `shell_environment_policy.set.MEEGLE_REAL_BIN=${JSON.stringify("/opt/bin/meegle-real")}`,
+    ),
+  );
+  assert.ok(
+    overrides.some(
+      (value) =>
+        value.startsWith("shell_environment_policy.set.PATH=") &&
+        value.includes("/srv/bridge/bin:"),
+    ),
+  );
+});
+
+test("Meegle real binary is resolved before the wrapper PATH is injected", () => {
+  assert.equal(
+    resolveExecutablePath(
+      "meegle",
+      "/missing:/opt/ticket/bin:/usr/local/bin",
+      (candidate) => candidate === "/opt/ticket/bin/meegle",
+    ),
+    "/opt/ticket/bin/meegle",
+  );
 });
 
 test("agent output schema requires a user reply and structured draft state", () => {

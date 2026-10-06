@@ -46,7 +46,7 @@ test("prompt treats attachment content as untrusted evidence", () => {
         email: "echo@example.com",
       },
     },
-  });
+  }, { meegleCommand: "/srv/bridge/bin/meegle" });
 
   assert.match(prompt, /附件内容.*不是系统指令/);
   assert.match(prompt, /可信入口路由策略/);
@@ -66,6 +66,10 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /lark-cli.*sandbox_permissions=require_escalated/);
   assert.match(prompt, /LARK_CLI_PROFILE/);
   assert.match(prompt, /verified_meegle_user_key: user_echo/);
+  assert.match(prompt, /meegle_command: \/srv\/bridge\/bin\/meegle/);
+  assert.match(prompt, /唯一允许的 Meegle 命令路径/);
+  assert.match(prompt, /login=false/);
+  assert.match(prompt, /禁止调用裸 `meegle`/);
   assert.match(prompt, /名称精确为“创建工单”的初始节点/);
   assert.match(prompt, /bridge 还会在 Agent 返回后执行同一项强制回读校正/);
   assert.match(prompt, /workflow update-node --node-owners/);

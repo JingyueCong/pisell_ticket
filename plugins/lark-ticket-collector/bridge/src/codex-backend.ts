@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import { accessSync, constants } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
@@ -37,6 +38,26 @@ export const AGENT_OUTPUT_SCHEMA = {
   },
 } as const;
 
+export function resolveExecutablePath(
+  executable: string,
+  pathValue = process.env.PATH ?? "",
+  canExecute: (candidate: string) => boolean = (candidate) => {
+    try {
+      accessSync(candidate, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+): string {
+  if (isAbsolute(executable)) return executable;
+  for (const directory of pathValue.split(delimiter).filter(Boolean)) {
+    const candidate = join(directory, executable);
+    if (canExecute(candidate)) return candidate;
+  }
+  throw new Error(`Unable to resolve executable to an absolute path: ${executable}`);
+}
+
 const agentOutput = z.object({
   reply: z.string().min(1),
   draft: z.object({
@@ -69,6 +90,8 @@ export function buildCodexArgs(input: {
   request: AgentRequest;
   outputPath: string;
   schemaPath: string;
+  meegleWrapperDirectory?: string;
+  meegleRealBin?: string;
 }): string[] {
   const args = [
     "exec",
@@ -87,6 +110,25 @@ export function buildCodexArgs(input: {
     "--output-schema",
     input.schemaPath,
   ];
+  const identity = input.request.envelope.meegleIdentity;
+  if (identity) {
+    const wrapperDirectory = input.meegleWrapperDirectory ?? join(process.cwd(), "bin");
+    const meegleRealBin = input.meegleRealBin ?? resolveExecutablePath(input.config.meegleIdentity.bin);
+    const commandPath = `${wrapperDirectory}:${process.env.PATH ?? ""}`;
+    const tomlString = (value: string) => JSON.stringify(value);
+    // The bridge process environment alone is insufficient: Codex may reuse a
+    // shell snapshot or start a login shell whose startup files reorder PATH.
+    args.push(
+      "-c",
+      "features.shell_snapshot=false",
+      "-c",
+      `shell_environment_policy.set.PATH=${tomlString(commandPath)}`,
+      "-c",
+      `shell_environment_policy.set.MEEGLE_REQUEST_PROFILE=${tomlString(identity.profile)}`,
+      "-c",
+      `shell_environment_policy.set.MEEGLE_REAL_BIN=${tomlString(meegleRealBin)}`,
+    );
+  }
   if (input.config.codex.model) args.push("--model", input.config.codex.model);
   if (input.config.codex.profile) args.push("--profile", input.config.codex.profile);
   const imagePaths = new Set<string>();
@@ -186,20 +228,32 @@ export class CodexCliBackend implements AgentBackend {
     const outputPath = join(tempDirectory, "last-message.md");
     const schemaPath = join(tempDirectory, "agent-output.schema.json");
     await writeFile(schemaPath, JSON.stringify(AGENT_OUTPUT_SCHEMA), { encoding: "utf8" });
-    const args = buildCodexArgs({ config: this.config, request, outputPath, schemaPath });
+    const meegleWrapperDirectory = join(process.cwd(), "bin");
+    const meegleWrapperPath = join(meegleWrapperDirectory, "meegle");
+    const meegleRealBin = request.envelope.meegleIdentity
+      ? resolveExecutablePath(this.config.meegleIdentity.bin)
+      : this.config.meegleIdentity.bin;
+    const args = buildCodexArgs({
+      config: this.config,
+      request,
+      outputPath,
+      schemaPath,
+      meegleWrapperDirectory,
+      meegleRealBin,
+    });
 
     try {
       const result = await runProcess({
         executable: this.config.codex.bin,
         args,
         cwd: this.config.codex.workspace,
-        stdin: buildAgentPrompt(request),
+        stdin: buildAgentPrompt(request, { meegleCommand: meegleWrapperPath }),
         timeoutMs: this.config.codex.timeoutMs,
         env: request.envelope.meegleIdentity
           ? {
               ...process.env,
               MEEGLE_REQUEST_PROFILE: request.envelope.meegleIdentity.profile,
-              MEEGLE_REAL_BIN: this.config.meegleIdentity.bin,
+              MEEGLE_REAL_BIN: meegleRealBin,
               PATH: `${join(process.cwd(), "bin")}:${process.env.PATH ?? ""}`,
             }
           : process.env,

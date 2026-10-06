@@ -2,7 +2,7 @@
 name: lark-ticket-collector
 description: "从飞书群聊或私聊收集问题、需求、客户、销售、内容、开发、验收、硬件、风控等事项，自动路由到 Pisell 项目管理的启用工作项类型，补全创建字段与隐藏角色、检查重复、创建或经授权更新 Meegle 工单，并回读验证附件和当前节点必填项。适用于创建、查询或更新 Pisell 飞书项目工单；不用于代码排查、根因分析或部署。"
 metadata:
-  version: "2.3.0+codex.20261006070929"
+  version: "2.3.0+codex.20261006105444"
   requires:
     bins: ["meegle", "lark-cli"]
 ---
@@ -207,7 +207,7 @@ metadata:
 
 满足自动提交条件，或已取得具体更新授权后，严格遵循：
 
-1. `meegle auth status --format json`；未认证或站点不匹配时停止并引导 OAuth，不降级为猜测。若环境中存在 `MEEGLE_REQUEST_PROFILE`，说明常驻 bridge 已核验当前飞书发送者；只调用裸 `meegle ...`，不得添加 `--profile`、切换/退出账号或回退其他 profile，查重到回读必须保持同一身份。
+1. `meegle auth status --format json`；未认证或站点不匹配时停止并引导 OAuth，不降级为猜测。若环境中存在 `MEEGLE_REQUEST_PROFILE`，说明常驻 bridge 已核验当前飞书发送者；此时必须使用可信桥接元数据给出的 `meegle_command` 绝对路径并设置命令工具 `login=false`，不得调用裸 `meegle`、其他路径、添加 `--profile`、切换/退出账号或回退其他 profile，查重到回读必须保持同一身份。
 2. `project search` 验证空间；`workitem meta-types` 确认目标类型与启用状态；不唯一时询问，停用类型停止创建。
 3. 复核预览阶段的字段元数据；跨轮提交或配置变化时刷新 `meta-create-fields`、`meta-fields`（含 `template` 与涉及字段）、必要时 `meta-roles`。模板和字段 key 不得脱离本轮元数据硬编码。
 4. 按已确认类型的真实表单字段写入。标准工作项至少核验名称和模板，再补齐该类型创建字段；图表和子任务改走专用域。阻断性问题、需求池和客服工单遵守各自已验证规则；命中已授权联动选项的客服工单先核验客服与所有目标草稿及各自查重结果，再按对应联动规则依序创建/复用并回写关联。来源消息、身份映射、附件哈希/长文件名、查重详情与模板核验保存在本地审计记录，不跨类型借用字段，不把推测根因写入任何类型。
