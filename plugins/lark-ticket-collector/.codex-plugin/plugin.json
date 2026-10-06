@@ -1,6 +1,6 @@
 {
   "name": "lark-ticket-collector",
-  "version": "2.3.0+codex.20261003130800",
+  "version": "2.3.0+codex.20261006034608",
   "description": "Route Lark requests across Pisell Meegle types and verify creation plus current-node readiness.",
   "author": {
     "name": "Ticket Collector Team"

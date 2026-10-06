@@ -56,6 +56,22 @@ export interface MeegleRequestIdentity {
   email?: string;
 }
 
+export type PairedWorkItemType =
+  | "blocking_issue"
+  | "content_maintenance"
+  | "demand_pool"
+  | "customer_card_machine"
+  | "risk_control";
+
+export interface IntakeRoutePolicy {
+  mode: "customer_bundle" | "customer_only" | "customer_auto" | "standalone" | "unspecified";
+  authoritative: boolean;
+  reason: string;
+  customerIssueOption?: string;
+  pairedWorkItemType?: PairedWorkItemType;
+  standaloneWorkItemType?: PairedWorkItemType;
+}
+
 export interface InboundEnvelope {
   messageId: string;
   chatId: string;
@@ -69,6 +85,7 @@ export interface InboundEnvelope {
   replyToMessageId?: string;
   createTime: number;
   resources: DownloadedResource[];
+  routePolicy?: IntakeRoutePolicy;
   contentMaintenanceProducerSource?: ContentMaintenanceProducerSource;
   meegleIdentity?: MeegleRequestIdentity;
 }

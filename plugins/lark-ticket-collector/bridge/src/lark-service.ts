@@ -13,6 +13,7 @@ import {
 
 import type { BridgeConfig } from "./config.js";
 import { KeyedQueue } from "./keyed-queue.js";
+import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import { logger } from "./logger.js";
 import { MeegleIdentityManager } from "./meegle-identity.js";
 import { parseProducerNames } from "./producer-source.js";
@@ -396,6 +397,7 @@ export class LarkTicketService {
       ...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
       createTime: message.createTime,
       resources,
+      routePolicy: deriveIntakeRoutePolicy(message.content),
       ...(meegleIdentity ? { meegleIdentity } : {}),
       ...(contentMaintenanceProducerSource
         ? { contentMaintenanceProducerSource }
