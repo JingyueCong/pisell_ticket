@@ -6,6 +6,7 @@ import test from "node:test";
 
 import type { BridgeConfig } from "../src/config.js";
 import {
+  isMeegleAuthorizationConfirmation,
   MeegleIdentityManager,
   type ProcessRunner,
 } from "../src/meegle-identity.js";
@@ -49,6 +50,12 @@ function config(dataDir: string): BridgeConfig {
     health: { host: "127.0.0.1", port: 0 },
   };
 }
+
+test("recognizes only explicit Meegle authorization confirmations", () => {
+  assert.equal(isMeegleAuthorizationConfirmation("@机器人 已授权"), true);
+  assert.equal(isMeegleAuthorizationConfirmation("授权完成"), true);
+  assert.equal(isMeegleAuthorizationConfirmation("请帮我创建工单"), false);
+});
 
 test("per-user authorization binds a verified sender and reuses only that profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));

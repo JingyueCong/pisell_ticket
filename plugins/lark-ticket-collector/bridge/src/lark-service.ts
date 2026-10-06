@@ -15,7 +15,10 @@ import type { BridgeConfig } from "./config.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import { logger } from "./logger.js";
-import { MeegleIdentityManager } from "./meegle-identity.js";
+import {
+  isMeegleAuthorizationConfirmation,
+  MeegleIdentityManager,
+} from "./meegle-identity.js";
 import { parseProducerNames } from "./producer-source.js";
 import { conversationKey } from "./prompt.js";
 import { BridgeStore } from "./store.js";
@@ -159,6 +162,11 @@ export class LarkTicketService {
         visitRecordChatIds: this.config.lark.visitRecordChatIds,
         visitRecordAllGroups: this.config.lark.visitRecordAllGroups,
       });
+      const identityConfirmation = Boolean(
+        this.identityManager &&
+          message.replyToMessageId &&
+          isMeegleAuthorizationConfirmation(message.content),
+      );
       const configuredGroupIds = new Set([
         ...this.config.lark.allowedChatIds,
         ...this.config.lark.visitRecordChatIds,
@@ -167,7 +175,8 @@ export class LarkTicketService {
         message.chatType === "group" &&
         configuredGroupIds.size > 0 &&
         !configuredGroupIds.has(message.chatId) &&
-        !automaticVisitRecord
+        !automaticVisitRecord &&
+        !identityConfirmation
       ) {
         return;
       }
@@ -175,7 +184,8 @@ export class LarkTicketService {
         message.chatType === "group" &&
         this.config.lark.requireMention &&
         !message.mentionedBot &&
-        !automaticVisitRecord
+        !automaticVisitRecord &&
+        !identityConfirmation
       ) {
         return;
       }

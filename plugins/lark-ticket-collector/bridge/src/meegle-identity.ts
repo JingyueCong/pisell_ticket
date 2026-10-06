@@ -31,6 +31,10 @@ export type IdentityGateResult =
   | { kind: "authorized"; identity: MeegleRequestIdentity }
   | { kind: "blocked"; reply: string };
 
+export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
+  return /(已授权|授权完成|完成授权)/u.test(messageText);
+}
+
 export type ProcessRunner = (
   executable: string,
   args: string[],
@@ -162,7 +166,7 @@ export class MeegleIdentityManager {
     }
 
     const pending = await this.readPending(profile);
-    const isConfirmation = /(已授权|授权完成|完成授权)/u.test(input.messageText);
+    const isConfirmation = isMeegleAuthorizationConfirmation(input.messageText);
     if (pending && pending.expiresAt > Date.now() && isConfirmation) {
       const poll = await this.meegle(profile, [
         "auth",
