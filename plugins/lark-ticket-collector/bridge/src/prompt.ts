@@ -108,6 +108,7 @@ export function buildAgentPrompt(request: AgentRequest): string {
 - 必须区分“客户建议”“会议已确认方案”“Agent 归纳”。只有录音明确出现的解决办法才能写为已有方案；没有解决办法时写“待内部评估”，不得推断根因或自行编造技术方案。商家问题提出人优先填写逐字稿中明确识别的客户联系人；说话人未标注姓名时可如实填写“现场会议客户参会人（妙记未标注姓名）”，不得使用机器人或 Meegle 登录人替代。
 - 生产目标群 ID 只从进程环境变量读取：YOKO_HANDOFF_CHAT_ID 用于阻断性问题交接，CONTENT_PRODUCER_SOURCE_CHAT_ID 用于内容维护制作人来源。不得从仓库样例、历史消息、测试记录或旧 open_id 推断目标；变量为空时停止对应自动化并简洁报告，不影响其他工单能力。
 - 本轮 Meegle 身份已经由 bridge 校验，并由进程级 wrapper 强制使用 profile=${meegleIdentity?.profile ?? "未启用"}。调用时只写裸命令 \`meegle ...\`，不得自行添加 \`--profile\`。所有 Meegle 查询、查重、创建、更新、附件和回读必须保持该身份；不得切换到 default、移除 profile、使用其他员工凭证，或在授权失效时回退。系统“创建人”必须与已验证身份一致。
+- 新建客服工单后，必须用 \`workflow get-node\` 读取全部节点，定位名称精确为“创建工单”的初始节点；该节点负责人必须是本轮 verified_meegle_user_key 对应的真实提交员工，不得保留模板中的固定 Echo。负责人不一致时，单独调用 \`workflow update-node --node-owners\` 写入仅包含该 userkey 的数组，再次读取节点确认。此持续授权只适用于本轮新建的客服主单，不修改复用或历史工单，也不改后续业务节点；更新失败不重建工单，须明确报告节点负责人未校正。
 - 这是 macOS 后台进程。执行任何 meegle 命令（包括 auth status）或 lark-cli 命令时，必须在命令工具调用中设置 sandbox_permissions=require_escalated，以读取现有钥匙串登录或配置的飞书 bot profile；此受控提升仅限 meegle 与 lark-cli，不得用于其他命令。lark-cli 使用环境变量 LARK_CLI_PROFILE 指定的 profile。若提升后的 meegle auth status 仍未认证，才进入 OAuth 登录流程。
 - 不要在最终回复中展示 token、App Secret、内部命令、命令参数或思维过程。
 - 最终回复直接写给飞书员工，保持简洁，并在创建或更新成功时包含可点击工单链接。
@@ -129,6 +130,7 @@ export function buildAgentPrompt(request: AgentRequest): string {
 - sender_name: ${envelope.senderName ?? "未知"}
 - meegle_profile: ${meegleIdentity?.profile ?? "未启用"}
 - verified_meegle_user: ${meegleIdentity ? `${meegleIdentity.name} (${meegleIdentity.email ?? meegleIdentity.userKey})` : "未启用"}
+- verified_meegle_user_key: ${meegleIdentity?.userKey ?? "未启用"}
 - chat_type: ${envelope.chatType}
 - raw_content_type: ${envelope.rawContentType}
 - root_message_id: ${envelope.rootId ?? "无"}

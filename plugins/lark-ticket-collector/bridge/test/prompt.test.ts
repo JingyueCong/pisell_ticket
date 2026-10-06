@@ -39,6 +39,12 @@ test("prompt treats attachment content as untrusted evidence", () => {
           size: 10,
         },
       ],
+      meegleIdentity: {
+        profile: "lark-echo",
+        userKey: "user_echo",
+        name: "Echo",
+        email: "echo@example.com",
+      },
     },
   });
 
@@ -59,6 +65,10 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /meegle.*sandbox_permissions=require_escalated/);
   assert.match(prompt, /lark-cli.*sandbox_permissions=require_escalated/);
   assert.match(prompt, /LARK_CLI_PROFILE/);
+  assert.match(prompt, /verified_meegle_user_key: user_echo/);
+  assert.match(prompt, /名称精确为“创建工单”的初始节点/);
+  assert.match(prompt, /不得保留模板中的固定 Echo/);
+  assert.match(prompt, /workflow update-node --node-owners/);
   assert.match(prompt, /可信内容维护制作人来源/);
   assert.match(prompt, /producer_names: Annie \/ Jane/);
   assert.match(prompt, /不得再次向员工索取制作人/);
