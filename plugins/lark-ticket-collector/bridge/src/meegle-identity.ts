@@ -31,6 +31,11 @@ export type IdentityGateResult =
   | { kind: "authorized"; identity: MeegleRequestIdentity }
   | { kind: "blocked"; reply: string };
 
+export interface CustomerNodeOwnerCorrection {
+  nodeId: string;
+  ownerUserKey: string;
+}
+
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
 }
@@ -92,6 +97,27 @@ function collectObjects(value: unknown, target: Array<Record<string, unknown>>):
   const object = value as Record<string, unknown>;
   target.push(object);
   for (const child of Object.values(object)) collectObjects(child, target);
+}
+
+function findWorkflowNode(
+  payload: unknown,
+  expectedName: string,
+): Record<string, unknown> | undefined {
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(payload, objects);
+  return objects.find((object) =>
+    [object.name, object.node_name, object.state_name, object.title].some(
+      (value) => value === expectedName,
+    ),
+  );
+}
+
+function workflowNodeId(node: Record<string, unknown>): string | undefined {
+  return (
+    stringValue(node.state_key) ??
+    stringValue(node.node_id) ??
+    stringValue(node.id)
+  );
 }
 
 function normalized(value: string): string {
@@ -248,6 +274,58 @@ export class MeegleIdentityManager {
         "完成后请在本消息下回复“已授权”，验证通过后再重新发送原始工单和附件。系统不会回退使用 Echo 身份。",
       ].join("\n"),
     };
+  }
+
+  async ensureCustomerIntakeNodeOwner(input: {
+    identity: MeegleRequestIdentity;
+    workItemId: string;
+  }): Promise<CustomerNodeOwnerCorrection> {
+    const nodeQuery = [
+      "workflow",
+      "get-node",
+      "--project-key",
+      this.config.meegleIdentity.projectKey,
+      "--work-item-id",
+      input.workItemId,
+      "--node-id-list",
+      "_all",
+      "--format",
+      "json",
+    ];
+    const current = await this.meegle(input.identity.profile, nodeQuery, true);
+    const node = findWorkflowNode(JSON.parse(current.stdout) as unknown, "创建工单");
+    if (!node) throw new Error("Customer ticket intake node was not returned");
+    const nodeId = workflowNodeId(node);
+    if (!nodeId) throw new Error("Customer ticket intake node has no node id");
+
+    await this.meegle(
+      input.identity.profile,
+      [
+        "workflow",
+        "update-node",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--work-item-id",
+        input.workItemId,
+        "--node-id",
+        nodeId,
+        "--node-owners",
+        input.identity.userKey,
+        "--format",
+        "json",
+      ],
+      true,
+    );
+
+    const verified = await this.meegle(input.identity.profile, nodeQuery, true);
+    const verifiedNode = findWorkflowNode(
+      JSON.parse(verified.stdout) as unknown,
+      "创建工单",
+    );
+    if (!verifiedNode || !JSON.stringify(verifiedNode).includes(input.identity.userKey)) {
+      throw new Error("Customer ticket intake node owner verification failed");
+    }
+    return { nodeId, ownerUserKey: input.identity.userKey };
   }
 
   private profileFor(senderId: string): string {

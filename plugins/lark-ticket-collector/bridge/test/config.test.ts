@@ -24,6 +24,7 @@ test("loadConfig parses allowlists and resolves paths", () => {
     BRIDGE_RESOURCE_DIR: "./data/resources",
     PER_USER_MEEGLE_AUTH: "true",
     MEEGLE_BIN: "/opt/bin/meegle",
+    MEEGLE_PROJECT_KEY: "pisell",
     MEEGLE_PROFILE_OVERRIDES: "ou_a=default,ou_b=ticket-bob",
     HEALTH_PORT: "0",
   });
@@ -39,6 +40,7 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.codex.timeoutMs, 600_000);
   assert.equal(config.meegleIdentity.enabled, true);
   assert.equal(config.meegleIdentity.bin, "/opt/bin/meegle");
+  assert.equal(config.meegleIdentity.projectKey, "pisell");
   assert.equal(config.meegleIdentity.profileOverrides.get("ou_a"), "default");
   assert.equal(config.meegleIdentity.profileOverrides.get("ou_b"), "ticket-bob");
   assert.equal(config.limits.maxHistoryMessages, 12);

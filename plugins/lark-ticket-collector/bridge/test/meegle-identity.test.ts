@@ -28,6 +28,7 @@ function config(dataDir: string): BridgeConfig {
       enabled: true,
       bin: "meegle",
       host: "project.feishu.cn",
+      projectKey: "v2qint",
       profileOverrides: new Map(),
     },
     codex: {
@@ -55,6 +56,57 @@ test("recognizes only explicit Meegle authorization confirmations", () => {
   assert.equal(isMeegleAuthorizationConfirmation("@机器人 已授权"), true);
   assert.equal(isMeegleAuthorizationConfirmation("授权完成"), true);
   assert.equal(isMeegleAuthorizationConfirmation("请帮我创建工单"), false);
+});
+
+test("customer intake node owner is force-updated and read back with the verified profile", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const calls: string[][] = [];
+  let updated = false;
+  const runner: ProcessRunner = async (executable, args) => {
+    calls.push([executable, ...args]);
+    if (args.includes("get-node")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            nodes: [
+              {
+                name: "创建工单",
+                state_key: "started",
+                owners: updated
+                  ? [{ user_key: "meegle_alice" }]
+                  : [{ user_key: "echo" }],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update-node")) updated = true;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureCustomerIntakeNodeOwner({
+        identity: {
+          profile: "lark-alice",
+          userKey: "meegle_alice",
+          name: "Alice",
+        },
+        workItemId: "7130051159",
+      });
+    assert.deepEqual(result, { nodeId: "started", ownerUserKey: "meegle_alice" });
+    const updateCall = calls.find((call) => call.includes("update-node"));
+    assert.ok(updateCall);
+    assert.equal(updateCall?.[updateCall.indexOf("--profile") + 1], "lark-alice");
+    assert.equal(updateCall?.[updateCall.indexOf("--node-owners") + 1], "meegle_alice");
+    assert.equal(updateCall?.[updateCall.indexOf("--project-key") + 1], "v2qint");
+    assert.equal(calls.filter((call) => call.includes("get-node")).length, 2);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("per-user authorization binds a verified sender and reuses only that profile", async () => {

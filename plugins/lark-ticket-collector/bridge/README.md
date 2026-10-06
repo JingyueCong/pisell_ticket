@@ -88,6 +88,7 @@ AUTO_VISIT_RECORD_GROUPS=false
 BRIDGE_WORKSPACE=/srv/pisell-ticket-workspace
 PER_USER_MEEGLE_AUTH=true
 MEEGLE_BIN=/absolute/path/to/meegle
+MEEGLE_PROJECT_KEY=v2qint
 LARK_CLI_BIN=/absolute/path/to/lark-cli
 # 可选：把当前员工 open_id 复用到一个已经存在的专属 Meegle profile。
 MEEGLE_PROFILE_OVERRIDES=ou_echo=default
@@ -103,6 +104,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `VISIT_RECORD_CHAT_IDS`：上门服务客户群，逗号分隔。群内出现且仅出现一个飞书妙记链接时自动处理，不需要 @；链接所在群的群名仅用作 CRM 客户检索线索，唯一匹配后才填写客户。单纯上传音频文件或发送普通文本不会自动建单。
 - `AUTO_VISIT_RECORD_GROUPS`：设为 `true` 后，不再需要逐个维护上门服务群 ID；机器人被主动加入的任意群都只对飞书妙记链接启用免 @ 自动处理。普通消息不会绕过 `ALLOWED_CHAT_IDS`，CRM 客户仍必须通过当前群名唯一匹配。
 - `PER_USER_MEEGLE_AUTH=true`：每位员工首次发消息时收到个人 OAuth 链接；完成后回复“已授权”，验证通过后重新发送原工单和附件。未授权、授权错账号或凭证失效时不会运行 Agent，也不会借用其他人的账号。
+- `MEEGLE_PROJECT_KEY`：客服主单创建后用于强制校正并回读“创建工单”节点负责人的空间标识；Pisell 生产空间为 `v2qint`。
 - `MEEGLE_PROFILE_OVERRIDES`：可选的 `sender_open_id=meegle_profile` 映射，逗号分隔，仅用于复用已经存在且属于该员工自己的 profile。没有映射的员工自动使用由 open_id 单向派生的独立 profile。
 - `LARK_CLI_BIN`、`MEEGLE_BIN`：后台服务使用的绝对 CLI 路径，避免 launchd 等无交互环境的 PATH 不完整。
 - `BRIDGE_DATA_DIR`、`BRIDGE_DB_PATH`、`BRIDGE_RESOURCE_DIR`：SQLite 和附件持久化位置，生产环境应放在持久磁盘并限制目录权限。

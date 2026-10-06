@@ -42,6 +42,7 @@ const schema = z.object({
     .transform((value) => value === "true"),
   MEEGLE_BIN: z.string().default("meegle"),
   MEEGLE_HOST: z.string().default("project.feishu.cn"),
+  MEEGLE_PROJECT_KEY: z.string().default("v2qint"),
   MEEGLE_PROFILE_OVERRIDES: z.string().default(""),
   BRIDGE_DATA_DIR: z.string().default("./var"),
   BRIDGE_DB_PATH: z.string().default("./var/bridge.sqlite"),
@@ -148,6 +149,7 @@ export interface BridgeConfig {
     enabled: boolean;
     bin: string;
     host: string;
+    projectKey: string;
     profileOverrides: Map<string, string>;
   };
   codex: {
@@ -207,6 +209,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       enabled: parsed.PER_USER_MEEGLE_AUTH,
       bin: parsed.MEEGLE_BIN,
       host: parsed.MEEGLE_HOST,
+      projectKey: parsed.MEEGLE_PROJECT_KEY,
       profileOverrides: mapping(parsed.MEEGLE_PROFILE_OVERRIDES),
     },
     codex: {

@@ -29,6 +29,7 @@ function config(resourceDir: string): BridgeConfig {
       enabled: false,
       bin: "meegle",
       host: "project.feishu.cn",
+      projectKey: "v2qint",
       profileOverrides: new Map(),
     },
     codex: {

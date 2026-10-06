@@ -351,7 +351,43 @@ export class LarkTicketService {
         ...(activeDraft ? { activeDraft } : {}),
         resourceRoot: this.config.storage.resourceDir,
       });
-      const reply = truncate(result.text, this.config.limits.maxReplyChars);
+      let resultText = result.text;
+      const customerRoute =
+        ["customer_bundle", "customer_only", "customer_auto"].includes(
+          envelope.routePolicy?.mode ?? "",
+        ) || /客服工单/u.test(result.draft.ticketType ?? activeDraft?.ticketType ?? "");
+      const customerWorkItemId = result.draft.workItemIds[0];
+      if (
+        customerRoute &&
+        customerWorkItemId &&
+        meegleIdentity &&
+        this.identityManager
+      ) {
+        try {
+          const correction = await this.identityManager.ensureCustomerIntakeNodeOwner({
+            identity: meegleIdentity,
+            workItemId: customerWorkItemId,
+          });
+          logger.info("customer.intake_owner_verified", {
+            messageId: message.messageId,
+            workItemId: customerWorkItemId,
+            nodeId: correction.nodeId,
+            ownerUserKey: correction.ownerUserKey,
+          });
+        } catch (error) {
+          logger.warn("customer.intake_owner_failed", {
+            messageId: message.messageId,
+            workItemId: customerWorkItemId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          resultText = [
+            resultText,
+            "",
+            `注意：客服工单 #${customerWorkItemId} 已保留，但“创建工单”节点负责人未能回读确认为当前提交员工；管理员只需校正该节点负责人，不要重复建单。`,
+          ].join("\n");
+        }
+      }
+      const reply = truncate(resultText, this.config.limits.maxReplyChars);
       const resultKey =
         result.draft.action === "update" || result.draft.action === "close"
           ? activeDraft?.conversationKey ?? messageKey
