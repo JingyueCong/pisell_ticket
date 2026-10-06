@@ -43,7 +43,8 @@ async function main(): Promise<void> {
   const identityManager = config.meegleIdentity.enabled
     ? new MeegleIdentityManager(config)
     : undefined;
-  const visitRecordLoader = config.lark.visitRecordChatIds.length
+  const visitRecordLoader =
+    config.lark.visitRecordAllGroups || config.lark.visitRecordChatIds.length
     ? new VisitRecordLoader(config)
     : undefined;
   const service = new LarkTicketService(
@@ -85,6 +86,7 @@ async function main(): Promise<void> {
     allowedSenderCount: config.lark.allowedSenderIds.length,
     perUserMeegleAuth: config.meegleIdentity.enabled,
     visitRecordChatCount: config.lark.visitRecordChatIds.length,
+    visitRecordAllGroups: config.lark.visitRecordAllGroups,
     workspace: config.codex.workspace,
   });
 }

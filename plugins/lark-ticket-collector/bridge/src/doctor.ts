@@ -85,14 +85,14 @@ async function main(): Promise<void> {
     ...(config.meegleIdentity.enabled
       ? [fileCheck("Meegle profile wrapper", join(process.cwd(), "bin", "meegle"), constants.X_OK)]
       : []),
-    ...(config.lark.visitRecordChatIds.length
+    ...(config.lark.visitRecordAllGroups || config.lark.visitRecordChatIds.length
       ? [
           Promise.resolve({
             name: "Feishu Minutes profile",
             ok: Boolean(config.lark.cliProfile),
             detail: config.lark.cliProfile
               ? `${config.lark.cliProfile} (runtime verifies basic, artifacts, and transcript scopes)`
-              : "LARK_CLI_PROFILE is required when VISIT_RECORD_CHAT_IDS is set",
+              : "LARK_CLI_PROFILE is required when automatic Minutes intake is enabled",
           }),
         ]
       : []),

@@ -16,6 +16,7 @@ const config: BridgeConfig = {
     cliBin: "lark-cli",
     allowedChatIds: [],
     visitRecordChatIds: [],
+    visitRecordAllGroups: false,
     allowedSenderIds: [],
     requireMention: true,
   },

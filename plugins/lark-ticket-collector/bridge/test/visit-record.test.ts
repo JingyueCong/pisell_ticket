@@ -21,6 +21,7 @@ function config(resourceDir: string): BridgeConfig {
       cliBin: "/opt/bin/lark-cli",
       allowedChatIds: [],
       visitRecordChatIds: ["oc_customer"],
+      visitRecordAllGroups: false,
       allowedSenderIds: [],
       requireMention: true,
     },
@@ -91,6 +92,30 @@ test("automatic visit-record trigger requires a configured group and a Minutes l
       chatType: "group",
       content: "普通消息",
       visitRecordChatIds: ["oc_customer"],
+    }),
+    false,
+  );
+});
+
+test("automatic visit-record trigger accepts any bot group when enabled", () => {
+  assert.equal(
+    isAutomaticVisitRecordMessage({
+      chatId: "oc_new_customer",
+      chatType: "group",
+      content:
+        '{"card":{"url":"https://tenant.feishu.cn/minutes/obcnu456"}}',
+      visitRecordChatIds: [],
+      visitRecordAllGroups: true,
+    }),
+    true,
+  );
+  assert.equal(
+    isAutomaticVisitRecordMessage({
+      chatId: "oc_new_customer",
+      chatType: "group",
+      content: "普通群消息",
+      visitRecordChatIds: [],
+      visitRecordAllGroups: true,
     }),
     false,
   );

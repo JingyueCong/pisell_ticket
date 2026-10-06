@@ -89,10 +89,11 @@ export function isAutomaticVisitRecordMessage(input: {
   chatType: "p2p" | "group";
   content: string;
   visitRecordChatIds: string[];
+  visitRecordAllGroups?: boolean;
 }): boolean {
   return (
     input.chatType === "group" &&
-    input.visitRecordChatIds.includes(input.chatId) &&
+    (input.visitRecordAllGroups || input.visitRecordChatIds.includes(input.chatId)) &&
     extractMinuteLinks(input.content).length > 0
   );
 }

@@ -61,6 +61,18 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+function messageEvidenceText(message: NormalizedMessage): string {
+  let raw = "";
+  if (message.raw !== undefined) {
+    try {
+      raw = JSON.stringify(message.raw);
+    } catch {
+      raw = "";
+    }
+  }
+  return [message.content, raw].filter(Boolean).join("\n");
+}
+
 function errorMessage(messageId: string): string {
   return [
     "这条工单消息处理失败，当前无法确认是否已经发生外部写入。",
@@ -87,7 +99,7 @@ export class LarkTicketService {
       ]),
     ];
     const policy = {
-      ...(allowedGroupIds.length
+      ...(!config.lark.visitRecordAllGroups && allowedGroupIds.length
         ? { groupAllowlist: allowedGroupIds }
         : {}),
       dmMode: config.lark.allowedSenderIds.length ? ("allowlist" as const) : ("open" as const),
@@ -96,7 +108,8 @@ export class LarkTicketService {
         : {}),
       // Automatic visit-record groups need non-mention Minutes links to reach
       // the bridge. registerHandlers applies the narrower per-message gate.
-      requireMention: config.lark.visitRecordChatIds.length
+      requireMention:
+        config.lark.visitRecordAllGroups || config.lark.visitRecordChatIds.length
         ? false
         : config.lark.requireMention,
       respondToMentionAll: false,
@@ -107,7 +120,9 @@ export class LarkTicketService {
       appSecret: config.lark.appSecret,
       transport: "websocket",
       policy,
-      includeRawEvent: false,
+      // Minutes share cards can hide their URL in the raw card payload rather
+      // than the normalized human-readable text.
+      includeRawEvent: true,
       loggerLevel: LoggerLevel.info,
       handshakeTimeoutMs: 30_000,
       source: "pisell-ticket-collector",
@@ -140,9 +155,22 @@ export class LarkTicketService {
       const automaticVisitRecord = isAutomaticVisitRecordMessage({
         chatId: message.chatId,
         chatType: message.chatType,
-        content: message.content,
+        content: messageEvidenceText(message),
         visitRecordChatIds: this.config.lark.visitRecordChatIds,
+        visitRecordAllGroups: this.config.lark.visitRecordAllGroups,
       });
+      const configuredGroupIds = new Set([
+        ...this.config.lark.allowedChatIds,
+        ...this.config.lark.visitRecordChatIds,
+      ]);
+      if (
+        message.chatType === "group" &&
+        configuredGroupIds.size > 0 &&
+        !configuredGroupIds.has(message.chatId) &&
+        !automaticVisitRecord
+      ) {
+        return;
+      }
       if (
         message.chatType === "group" &&
         this.config.lark.requireMention &&
@@ -193,8 +221,9 @@ export class LarkTicketService {
     const automaticVisitRecord = isAutomaticVisitRecordMessage({
       chatId: message.chatId,
       chatType: message.chatType,
-      content: message.content,
+      content: messageEvidenceText(message),
       visitRecordChatIds: this.config.lark.visitRecordChatIds,
+      visitRecordAllGroups: this.config.lark.visitRecordAllGroups,
     });
     const claimed = this.store.claimMessage({
       messageId: message.messageId,
@@ -472,7 +501,7 @@ export class LarkTicketService {
     if (!this.visitRecordLoader) {
       throw new VisitRecordError("上门服务妙记读取器未启用");
     }
-    const links = extractMinuteLinks(message.content);
+    const links = extractMinuteLinks(messageEvidenceText(message));
     if (links.length !== 1) {
       throw new VisitRecordError(
         links.length

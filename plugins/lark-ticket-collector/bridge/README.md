@@ -14,7 +14,7 @@
 - SQLite 记录消息状态并按飞书 `message_id` 幂等。同一消息失败后不会自动重放，以免外部写入结果不明时重复建单。
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
-- 可把指定客户群配置为“上门服务会议群”：群内发送一条飞书妙记链接后，无需 @ 机器人，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务工单”客服主单。群内其他普通消息仍遵守 `REQUIRE_MENTION`。
+- 可启用“机器人入群即监听”：任何主动加入机器人的群内出现一条飞书妙记链接后，无需 @，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务工单”客服主单。群内普通消息仍受原群白名单与 `REQUIRE_MENTION` 约束。
 - 可启用员工级 Meegle OAuth：每位员工首次使用时绑定自己的身份，之后由该员工身份执行查重、创建、更新、附件和回读，系统“创建人”因此等于飞书消息提交人；禁止回退到 Echo 或其他共用账号。
 
 ## 架构
@@ -83,6 +83,8 @@ YOKO_HANDOFF_CHAT_ID=oc_yoko_group
 CONTENT_PRODUCER_SOURCE_CHAT_ID=oc_content_group
 # 指定客户群中发送飞书妙记链接时自动创建上门服务客服主单，多个群用逗号分隔。
 VISIT_RECORD_CHAT_IDS=oc_customer_a,oc_customer_b
+# true 时，机器人被主动加入的所有群都自动监听飞书妙记链接；普通消息不会因此开放。
+AUTO_VISIT_RECORD_GROUPS=false
 BRIDGE_WORKSPACE=/srv/pisell-ticket-workspace
 PER_USER_MEEGLE_AUTH=true
 MEEGLE_BIN=/absolute/path/to/meegle
@@ -99,6 +101,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `YOKO_HANDOFF_CHAT_ID`：阻断性问题自动交接群；留空则只创建工单、不发 Yoko 通知。
 - `CONTENT_PRODUCER_SOURCE_CHAT_ID`：内容维护制作人来源群；留空则无法自动读取制作人。
 - `VISIT_RECORD_CHAT_IDS`：上门服务客户群，逗号分隔。群内出现且仅出现一个飞书妙记链接时自动处理，不需要 @；链接所在群的群名仅用作 CRM 客户检索线索，唯一匹配后才填写客户。单纯上传音频文件或发送普通文本不会自动建单。
+- `AUTO_VISIT_RECORD_GROUPS`：设为 `true` 后，不再需要逐个维护上门服务群 ID；机器人被主动加入的任意群都只对飞书妙记链接启用免 @ 自动处理。普通消息不会绕过 `ALLOWED_CHAT_IDS`，CRM 客户仍必须通过当前群名唯一匹配。
 - `PER_USER_MEEGLE_AUTH=true`：每位员工首次发消息时收到个人 OAuth 链接；完成后回复“已授权”，验证通过后重新发送原工单和附件。未授权、授权错账号或凭证失效时不会运行 Agent，也不会借用其他人的账号。
 - `MEEGLE_PROFILE_OVERRIDES`：可选的 `sender_open_id=meegle_profile` 映射，逗号分隔，仅用于复用已经存在且属于该员工自己的 profile。没有映射的员工自动使用由 open_id 单向派生的独立 profile。
 - `LARK_CLI_BIN`、`MEEGLE_BIN`：后台服务使用的绝对 CLI 路径，避免 launchd 等无交互环境的 PATH 不完整。
@@ -147,7 +150,7 @@ Nick 扣款任务：请检查该订单是否需要扣款
 
 ### 上门服务会议自动收单
 
-先在客服工单的“对应问题类型”字段中新增并启用选项 `上门服务工单`。随后把客户群加入 `VISIT_RECORD_CHAT_IDS`。会议结束且飞书妙记已生成后，在该客户群发送妙记链接即可自动触发：
+先在客服工单的“对应问题类型”字段中新增并启用选项 `上门服务工单`。推荐设置 `AUTO_VISIT_RECORD_GROUPS=true`，之后只需把机器人主动加入客户群；也可以保持关闭并逐个把群加入 `VISIT_RECORD_CHAT_IDS`。会议结束且飞书妙记已生成后，在该客户群发送妙记链接即可自动触发：
 
 ```text
 https://tenant.feishu.cn/minutes/obcnu...
@@ -172,7 +175,7 @@ https://tenant.feishu.cn/minutes/obcnu...
 - 收不到消息：检查应用是否已发布、机器人是否在群中、长连接事件是否为 `im.message.receive_v1`，以及群/发送人白名单。
 - 能收消息但无法回复：检查机器人发言权限和 `im:message:send_as_bot`。
 - 附件下载失败：检查 `im:resource`，并确认附件属于当前消息且未超过 `MAX_RESOURCE_BYTES`。
-- 上门服务链接没有触发：确认群 ID 在 `VISIT_RECORD_CHAT_IDS`，应用能接收该群的非 @ 消息，机器人仍在群内，并且消息中是可识别的 `/minutes/<token>` 链接。
+- 上门服务链接没有触发：若使用自动入群监听，确认 `AUTO_VISIT_RECORD_GROUPS=true`；否则确认群 ID 在 `VISIT_RECORD_CHAT_IDS`。同时确认应用能接收群内非 @ 消息、机器人仍在群内，并且消息或妙记卡片中包含可识别的 `/minutes/<token>` 链接。
 - 上门服务提示妙记不可读：确认 `LARK_CLI_PROFILE` 的用户已授权 `minutes:minutes.basic:read`、`minutes:minutes.artifacts:read` 和 `minutes:minutes.transcript:export`，该用户能在飞书中打开该妙记，而且妙记已经生成完成。
 - 上门服务卡在字段：确认客服工单“对应问题类型”已有启用选项 `上门服务工单`；bridge 不会用其他问题类型代替。
 - `doctor` 中 Meegle 失败：确认 `MEEGLE_BIN` 路径正确；未启用员工 OAuth 时重新完成 `meegle auth login --host project.feishu.cn`。
