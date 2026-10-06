@@ -143,9 +143,20 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
       conversationKey: "oc_1:ou_1:scope:unrelated",
       chatId: "oc_1",
       senderId: "ou_1",
+      allowParticipantFallback: true,
       now: 1_050,
     });
     assert.equal(foundByParticipant?.id, opened.id);
+
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_1:scope:threaded-reply",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        now: 1_050,
+      }),
+      undefined,
+    );
 
     const updated = store.applyDraftUpdate({
       conversationKey,
@@ -222,6 +233,66 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
         chatId: "oc_1",
         senderId: "ou_1",
         now: 2_011,
+      }),
+      undefined,
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("store does not guess between concurrent drafts for the same participant", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  try {
+    for (const [messageId, summary] of [
+      ["om_t2", "T2 积分卡问题"],
+      ["om_t3", "T3 内容维护"],
+    ] as const) {
+      store.applyDraftUpdate({
+        conversationKey: `oc_1:ou_1:scope:${messageId}`,
+        chatId: "oc_1",
+        senderId: "ou_1",
+        update: {
+          action: "open",
+          summary,
+          missingFields: ["店铺 ID"],
+          workItemIds: [],
+        },
+        ttlMs: 1_000,
+        now: messageId === "om_t2" ? 1_000 : 1_100,
+      });
+    }
+
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_1:scope:unscoped-message",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        allowParticipantFallback: true,
+        now: 1_200,
+      }),
+      undefined,
+    );
+
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_1:scope:om_t3",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        now: 1_200,
+      })?.summary,
+      "T3 内容维护",
+    );
+
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_2:scope:om_t3",
+        chatId: "oc_1",
+        senderId: "ou_2",
+        allowParticipantFallback: true,
+        now: 1_200,
       }),
       undefined,
     );

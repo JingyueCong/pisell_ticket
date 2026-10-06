@@ -268,6 +268,7 @@ export class BridgeStore {
     conversationKey: string;
     chatId: string;
     senderId: string;
+    allowParticipantFallback?: boolean;
     now?: number;
   }): DraftSnapshot | undefined {
     const now = input.now ?? Date.now();
@@ -286,17 +287,22 @@ export class BridgeStore {
       .get(input.conversationKey, input.chatId, input.senderId) as DraftRow | undefined;
     if (exact) return draftSnapshot(exact);
 
-    const latest = this.db
+    // A threaded/reply message must never attach to a different draft. The
+    // caller only enables participant fallback for an unscoped message, where
+    // it is still safe solely when that participant has exactly one open draft.
+    if (!input.allowParticipantFallback) return undefined;
+
+    const candidates = this.db
       .prepare(`
         SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
                missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
         FROM ticket_drafts
         WHERE chat_id = ? AND sender_id = ? AND status = 'open'
         ORDER BY updated_at DESC
-        LIMIT 1
+        LIMIT 2
       `)
-      .get(input.chatId, input.senderId) as DraftRow | undefined;
-    return latest ? draftSnapshot(latest) : undefined;
+      .all(input.chatId, input.senderId) as DraftRow[];
+    return candidates.length === 1 ? draftSnapshot(candidates[0]!) : undefined;
   }
 
   applyDraftUpdate(input: {

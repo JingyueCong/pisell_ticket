@@ -197,6 +197,9 @@ export class LarkTicketService {
         conversationKey: messageKey,
         chatId: envelope.chatId,
         senderId: envelope.senderId,
+        allowParticipantFallback: !(
+          envelope.threadId || envelope.rootId || envelope.replyToMessageId
+        ),
       });
       const contextKey = activeDraft?.conversationKey ?? messageKey;
       const userTranscript = this.transcriptText(envelope);
