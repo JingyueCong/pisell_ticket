@@ -20,6 +20,7 @@ const schema = z.object({
   LARK_APP_ID: z.string().min(1),
   LARK_APP_SECRET: z.string().min(1),
   LARK_CLI_PROFILE: optionalString,
+  LARK_CLI_BIN: z.string().default("lark-cli"),
   ALLOWED_CHAT_IDS: z.string().default(""),
   ALLOWED_SENDER_IDS: z.string().default(""),
   YOKO_HANDOFF_CHAT_ID: optionalString,
@@ -30,6 +31,13 @@ const schema = z.object({
   CODEX_MODEL: optionalString,
   CODEX_PROFILE: optionalString,
   CODEX_TIMEOUT_MS: positiveInt(600_000),
+  PER_USER_MEEGLE_AUTH: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  MEEGLE_BIN: z.string().default("meegle"),
+  MEEGLE_HOST: z.string().default("project.feishu.cn"),
+  MEEGLE_PROFILE_OVERRIDES: z.string().default(""),
   BRIDGE_DATA_DIR: z.string().default("./var"),
   BRIDGE_DB_PATH: z.string().default("./var/bridge.sqlite"),
   BRIDGE_RESOURCE_DIR: z.string().default("./var/resources"),
@@ -105,16 +113,35 @@ function list(value: string): string[] {
     .filter(Boolean);
 }
 
+function mapping(value: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const entry of list(value)) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0 || separator === entry.length - 1) {
+      throw new Error(`Invalid sender/profile mapping: ${entry}`);
+    }
+    result.set(entry.slice(0, separator).trim(), entry.slice(separator + 1).trim());
+  }
+  return result;
+}
+
 export interface BridgeConfig {
   lark: {
     appId: string;
     appSecret: string;
     cliProfile?: string;
+    cliBin: string;
     allowedChatIds: string[];
     allowedSenderIds: string[];
     requireMention: boolean;
     contentMaintenanceProducerSource?: ContentMaintenanceProducerSourceConfig;
     handoffChatId?: string;
+  };
+  meegleIdentity: {
+    enabled: boolean;
+    bin: string;
+    host: string;
+    profileOverrides: Map<string, string>;
   };
   codex: {
     bin: string;
@@ -156,6 +183,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       appId: parsed.LARK_APP_ID,
       appSecret: parsed.LARK_APP_SECRET,
       ...(parsed.LARK_CLI_PROFILE ? { cliProfile: parsed.LARK_CLI_PROFILE } : {}),
+      cliBin: parsed.LARK_CLI_BIN,
       allowedChatIds: list(parsed.ALLOWED_CHAT_IDS),
       allowedSenderIds: list(parsed.ALLOWED_SENDER_IDS),
       requireMention: parsed.REQUIRE_MENTION,
@@ -165,6 +193,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       ...(contentMaintenanceProducerSource
         ? { contentMaintenanceProducerSource }
         : {}),
+    },
+    meegleIdentity: {
+      enabled: parsed.PER_USER_MEEGLE_AUTH,
+      bin: parsed.MEEGLE_BIN,
+      host: parsed.MEEGLE_HOST,
+      profileOverrides: mapping(parsed.MEEGLE_PROFILE_OVERRIDES),
     },
     codex: {
       bin: parsed.CODEX_BIN,

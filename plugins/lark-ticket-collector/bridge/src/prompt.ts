@@ -25,6 +25,7 @@ export function conversationKey(
 
 export function buildAgentPrompt(request: AgentRequest): string {
   const { envelope, history, activeDraft } = request;
+  const meegleIdentity = envelope.meegleIdentity;
   const transcript = history
     .map((message) => `${message.role === "user" ? "员工" : "工单机器人"}: ${message.content}`)
     .join("\n\n");
@@ -74,6 +75,7 @@ export function buildAgentPrompt(request: AgentRequest): string {
 - 客服“对应问题类型”包含 T1、T2、T3 客户代运营、T5 功能建议/改进、客户刷卡机或风控处理中的任一项时，客服工单与所有命中的配套工单必须作为同一严格 bundle 处理。先补齐每张草稿的创建必填值、刷新元数据并完成查重；任一配套草稿未就绪时，不得先创建客服工单或其他已就绪目标，只一次性询问全部缺项。全部就绪后才顺序创建或复用并验证每个客服外向关联；外部写入中断时保存已建 ID、只续跑缺失步骤，禁止重复创建或把单独客服工单报告为完成。T4 商务、内部跟进和客户情绪/公关只创建客服工单。
 - “可信内容维护制作人来源”由常驻桥接服务直接从配置群读取。创建内容维护工单时，只要 producer_names 已解析，就必须直接使用这些姓名解析 Meegle 用户并填写“制作人&交付人”，不得再次向员工索取制作人，也不得重复调用 lark-cli 读取群名。只有该元数据未配置、读取失败或未解析出姓名时，才允许调用 lark-cli 回退一次。
 - 生产目标群 ID 只从进程环境变量读取：YOKO_HANDOFF_CHAT_ID 用于阻断性问题交接，CONTENT_PRODUCER_SOURCE_CHAT_ID 用于内容维护制作人来源。不得从仓库样例、历史消息、测试记录或旧 open_id 推断目标；变量为空时停止对应自动化并简洁报告，不影响其他工单能力。
+- 本轮 Meegle 身份已经由 bridge 校验，并由进程级 wrapper 强制使用 profile=${meegleIdentity?.profile ?? "未启用"}。调用时只写裸命令 \`meegle ...\`，不得自行添加 \`--profile\`。所有 Meegle 查询、查重、创建、更新、附件和回读必须保持该身份；不得切换到 default、移除 profile、使用其他员工凭证，或在授权失效时回退。系统“创建人”必须与已验证身份一致。
 - 这是 macOS 后台进程。执行任何 meegle 命令（包括 auth status）或 lark-cli 命令时，必须在命令工具调用中设置 sandbox_permissions=require_escalated，以读取现有钥匙串登录或配置的飞书 bot profile；此受控提升仅限 meegle 与 lark-cli，不得用于其他命令。lark-cli 使用环境变量 LARK_CLI_PROFILE 指定的 profile。若提升后的 meegle auth status 仍未认证，才进入 OAuth 登录流程。
 - 不要在最终回复中展示 token、App Secret、内部命令、命令参数或思维过程。
 - 最终回复直接写给飞书员工，保持简洁，并在创建或更新成功时包含可点击工单链接。
@@ -93,6 +95,8 @@ export function buildAgentPrompt(request: AgentRequest): string {
 - source_message_id: ${envelope.messageId}
 - sender_open_id: ${envelope.senderId}
 - sender_name: ${envelope.senderName ?? "未知"}
+- meegle_profile: ${meegleIdentity?.profile ?? "未启用"}
+- verified_meegle_user: ${meegleIdentity ? `${meegleIdentity.name} (${meegleIdentity.email ?? meegleIdentity.userKey})` : "未启用"}
 - chat_type: ${envelope.chatType}
 - raw_content_type: ${envelope.rawContentType}
 - root_message_id: ${envelope.rootId ?? "无"}

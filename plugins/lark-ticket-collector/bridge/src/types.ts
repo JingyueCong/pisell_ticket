@@ -49,6 +49,13 @@ export interface ContentMaintenanceProducerSource {
   error?: string;
 }
 
+export interface MeegleRequestIdentity {
+  profile: string;
+  userKey: string;
+  name: string;
+  email?: string;
+}
+
 export interface InboundEnvelope {
   messageId: string;
   chatId: string;
@@ -63,6 +70,7 @@ export interface InboundEnvelope {
   createTime: number;
   resources: DownloadedResource[];
   contentMaintenanceProducerSource?: ContentMaintenanceProducerSource;
+  meegleIdentity?: MeegleRequestIdentity;
 }
 
 export interface AgentRequest {

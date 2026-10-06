@@ -5,6 +5,7 @@ import { CodexCliBackend } from "./codex-backend.js";
 import { loadConfig } from "./config.js";
 import { LarkTicketService } from "./lark-service.js";
 import { logger } from "./logger.js";
+import { MeegleIdentityManager } from "./meegle-identity.js";
 import { BridgeStore } from "./store.js";
 
 function startHealthServer(input: {
@@ -38,7 +39,10 @@ async function main(): Promise<void> {
 
   const store = new BridgeStore(config.storage.dbPath);
   const agent = new CodexCliBackend(config);
-  const service = new LarkTicketService(config, store, agent);
+  const identityManager = config.meegleIdentity.enabled
+    ? new MeegleIdentityManager(config)
+    : undefined;
+  const service = new LarkTicketService(config, store, agent, identityManager);
   let ready = false;
   let shuttingDown = false;
   const health = startHealthServer({
@@ -69,6 +73,7 @@ async function main(): Promise<void> {
   logger.info("service.ready", {
     allowedChatCount: config.lark.allowedChatIds.length,
     allowedSenderCount: config.lark.allowedSenderIds.length,
+    perUserMeegleAuth: config.meegleIdentity.enabled,
     workspace: config.codex.workspace,
   });
 }

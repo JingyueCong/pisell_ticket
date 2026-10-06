@@ -13,9 +13,16 @@ const config: BridgeConfig = {
   lark: {
     appId: "cli_test",
     appSecret: "secret",
+    cliBin: "lark-cli",
     allowedChatIds: [],
     allowedSenderIds: [],
     requireMention: true,
+  },
+  meegleIdentity: {
+    enabled: false,
+    bin: "meegle",
+    host: "project.feishu.cn",
+    profileOverrides: new Map(),
   },
   codex: {
     bin: "codex",

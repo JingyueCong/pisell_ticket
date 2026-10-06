@@ -113,11 +113,12 @@ function runProcess(input: {
   cwd: string;
   stdin: string;
   timeoutMs: number;
+  env?: NodeJS.ProcessEnv;
 }): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(input.executable, input.args, {
       cwd: input.cwd,
-      env: process.env,
+      env: input.env ?? process.env,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -194,6 +195,14 @@ export class CodexCliBackend implements AgentBackend {
         cwd: this.config.codex.workspace,
         stdin: buildAgentPrompt(request),
         timeoutMs: this.config.codex.timeoutMs,
+        env: request.envelope.meegleIdentity
+          ? {
+              ...process.env,
+              MEEGLE_REQUEST_PROFILE: request.envelope.meegleIdentity.profile,
+              MEEGLE_REAL_BIN: this.config.meegleIdentity.bin,
+              PATH: `${join(process.cwd(), "bin")}:${process.env.PATH ?? ""}`,
+            }
+          : process.env,
       });
 
       let rawOutput = "";

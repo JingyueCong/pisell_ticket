@@ -37,9 +37,13 @@ function run(executable: string, args: string[], cwd: string): Promise<Check> {
   });
 }
 
-async function fileCheck(name: string, path: string): Promise<Check> {
+async function fileCheck(
+  name: string,
+  path: string,
+  mode: number = constants.R_OK,
+): Promise<Check> {
   try {
-    await access(path, constants.R_OK);
+    await access(path, mode);
     return { name, ok: true, detail: path };
   } catch {
     return { name, ok: false, detail: `missing: ${path}` };
@@ -50,17 +54,37 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const larkArgs = [
     ...(config.lark.cliProfile ? ["--profile", config.lark.cliProfile] : []),
-    "whoami",
+    ...(config.meegleIdentity.enabled && config.meegleIdentity.profileOverrides.size
+      ? [
+          "contact",
+          "+search-user",
+          "--user-ids",
+          config.meegleIdentity.profileOverrides.keys().next().value as string,
+          "--as",
+          "user",
+          "--format",
+          "json",
+        ]
+      : ["whoami"]),
   ];
   const checks = await Promise.all([
     run(config.codex.bin, ["--version"], config.codex.workspace),
-    run("meegle", ["auth", "status", "--format", "json"], config.codex.workspace),
-    run("lark-cli", larkArgs, config.codex.workspace),
+    run(
+      config.meegleIdentity.bin,
+      config.meegleIdentity.enabled
+        ? ["--version"]
+        : ["auth", "status", "--format", "json"],
+      config.codex.workspace,
+    ),
+    run(config.lark.cliBin, larkArgs, config.codex.workspace),
     fileCheck("workspace rules", join(config.codex.workspace, "AGENTS.md")),
     fileCheck(
       "ticket configuration",
       join(config.codex.workspace, ".ticket-collector", "configuration", "runtime.json"),
     ),
+    ...(config.meegleIdentity.enabled
+      ? [fileCheck("Meegle profile wrapper", join(process.cwd(), "bin", "meegle"), constants.X_OK)]
+      : []),
   ]);
 
   for (const check of checks) {

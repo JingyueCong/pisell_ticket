@@ -14,6 +14,7 @@ import {
 import type { BridgeConfig } from "./config.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { logger } from "./logger.js";
+import { MeegleIdentityManager } from "./meegle-identity.js";
 import { parseProducerNames } from "./producer-source.js";
 import { conversationKey } from "./prompt.js";
 import { BridgeStore } from "./store.js";
@@ -22,6 +23,7 @@ import type {
   ContentMaintenanceProducerSource,
   DownloadedResource,
   InboundEnvelope,
+  MeegleRequestIdentity,
 } from "./types.js";
 
 function safeName(resource: ResourceDescriptor, index: number): string {
@@ -67,6 +69,7 @@ export class LarkTicketService {
     private readonly config: BridgeConfig,
     private readonly store: BridgeStore,
     private readonly agent: AgentBackend,
+    private readonly identityManager?: MeegleIdentityManager,
   ) {
     const policy = {
       ...(config.lark.allowedChatIds.length
@@ -127,7 +130,9 @@ export class LarkTicketService {
         return;
       }
 
-      const key = `${message.chatId}:${message.senderId}`;
+      // A sender owns one Meegle profile across every allowed chat. Serialize by
+      // sender so two simultaneous chats cannot race the same OAuth/profile state.
+      const key = message.senderId;
       void this.queue.enqueue(key, () => this.processMessage(message)).catch((error: unknown) => {
         logger.error("message.queue_error", {
           messageId: message.messageId,
@@ -169,6 +174,49 @@ export class LarkTicketService {
       resourceCount: message.resources.length,
     });
 
+    let meegleIdentity: MeegleRequestIdentity | undefined;
+    if (this.identityManager) {
+      try {
+        const gate = await this.identityManager.authorize({
+          senderId: message.senderId,
+          ...(message.senderName ? { senderName: message.senderName } : {}),
+          messageText: message.content,
+        });
+        if (gate.kind === "blocked") {
+          this.store.completeMessage(message.messageId, gate.reply);
+          await this.channel.send(
+            message.chatId,
+            { markdown: gate.reply },
+            { replyTo: message.messageId },
+          );
+          logger.info("message.identity_blocked", {
+            messageId: message.messageId,
+            senderId: message.senderId,
+          });
+          return;
+        }
+        meegleIdentity = gate.identity;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        const reply = [
+          "暂时无法验证你的飞书项目身份，因此没有创建或修改任何工单。",
+          "请联系管理员检查个人授权与飞书通讯录读取权限后，再发送一条新的工单消息。",
+        ].join("\n");
+        this.store.failMessage(message.messageId, reason);
+        logger.error("message.identity_failed", {
+          messageId: message.messageId,
+          senderId: message.senderId,
+          error: reason,
+        });
+        await this.channel.send(
+          message.chatId,
+          { markdown: reply },
+          { replyTo: message.messageId },
+        );
+        return;
+      }
+    }
+
     try {
       await this.channel.send(
         message.chatId,
@@ -191,7 +239,12 @@ export class LarkTicketService {
         this.readContentMaintenanceProducerSource(),
       ]);
       this.store.saveResources(message.messageId, resources);
-      const envelope = this.toEnvelope(message, resources, producerSource);
+      const envelope = this.toEnvelope(
+        message,
+        resources,
+        producerSource,
+        meegleIdentity,
+      );
       const messageKey = conversationKey(envelope);
       const activeDraft = this.store.activeDraft({
         conversationKey: messageKey,
@@ -328,6 +381,7 @@ export class LarkTicketService {
     message: NormalizedMessage,
     resources: DownloadedResource[],
     contentMaintenanceProducerSource?: ContentMaintenanceProducerSource,
+    meegleIdentity?: MeegleRequestIdentity,
   ): InboundEnvelope {
     return {
       messageId: message.messageId,
@@ -342,6 +396,7 @@ export class LarkTicketService {
       ...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
       createTime: message.createTime,
       resources,
+      ...(meegleIdentity ? { meegleIdentity } : {}),
       ...(contentMaintenanceProducerSource
         ? { contentMaintenanceProducerSource }
         : {}),

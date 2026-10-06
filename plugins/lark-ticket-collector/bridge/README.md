@@ -14,13 +14,14 @@
 - SQLite 记录消息状态并按飞书 `message_id` 幂等。同一消息失败后不会自动重放，以免外部写入结果不明时重复建单。
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
+- 可启用员工级 Meegle OAuth：每位员工首次使用时绑定自己的身份，之后由该员工身份执行查重、创建、更新、附件和回读，系统“创建人”因此等于飞书消息提交人；禁止回退到 Echo 或其他共用账号。
 
 ## 架构
 
 ```text
 飞书员工
   -> 飞书自建应用机器人（im.message.receive_v1，长连接）
-  -> bridge（白名单、附件下载、排队、幂等、会话记录）
+  -> bridge（白名单、员工 OAuth、附件下载、排队、幂等、会话记录）
   -> codex exec（lark-ticket-collector 插件）
   -> Meegle / lark-cli
   -> 回复原飞书消息
@@ -32,7 +33,7 @@
 
 在飞书开放平台创建企业自建应用并启用机器人能力：
 
-1. 在权限管理中至少申请 `im:message`、`im:message:send_as_bot`、`im:resource` 和 `im:chat.members:read`。如果机器人只接收群内 @ 消息，可按飞书控制台提示申请对应的群 @ 消息权限；如果要读取群内所有消息，需申请更高范围的群消息权限。
+1. 在权限管理中至少申请 `im:message`、`im:message:send_as_bot`、`im:resource` 和 `im:chat.members:read`。启用员工级 Meegle OAuth 时，还要让 `LARK_CLI_PROFILE` 的用户授权 `contact:user:search`，用于核对 OAuth 账号确实属于当前消息发送者。如果机器人只接收群内 @ 消息，可按飞书控制台提示申请对应的群 @ 消息权限；如果要读取群内所有消息，需申请更高范围的群消息权限。
 2. 在事件订阅中选择“使用长连接接收事件”，订阅 `im.message.receive_v1`。
 3. 发布应用版本并通过管理员审核。
 4. 将机器人加入准备用于收单的群；机器人必须有发言权限。
@@ -80,6 +81,11 @@ REQUIRE_MENTION=true
 YOKO_HANDOFF_CHAT_ID=oc_yoko_group
 CONTENT_PRODUCER_SOURCE_CHAT_ID=oc_content_group
 BRIDGE_WORKSPACE=/srv/pisell-ticket-workspace
+PER_USER_MEEGLE_AUTH=true
+MEEGLE_BIN=/absolute/path/to/meegle
+LARK_CLI_BIN=/absolute/path/to/lark-cli
+# 可选：把当前员工 open_id 复用到一个已经存在的专属 Meegle profile。
+MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 ```
 
 关键项：
@@ -89,6 +95,9 @@ BRIDGE_WORKSPACE=/srv/pisell-ticket-workspace
 - `ALLOWED_SENDER_IDS`：允许使用的员工，逗号分隔。
 - `YOKO_HANDOFF_CHAT_ID`：阻断性问题自动交接群；留空则只创建工单、不发 Yoko 通知。
 - `CONTENT_PRODUCER_SOURCE_CHAT_ID`：内容维护制作人来源群；留空则无法自动读取制作人。
+- `PER_USER_MEEGLE_AUTH=true`：每位员工首次发消息时收到个人 OAuth 链接；完成后回复“已授权”，验证通过后重新发送原工单和附件。未授权、授权错账号或凭证失效时不会运行 Agent，也不会借用其他人的账号。
+- `MEEGLE_PROFILE_OVERRIDES`：可选的 `sender_open_id=meegle_profile` 映射，逗号分隔，仅用于复用已经存在且属于该员工自己的 profile。没有映射的员工自动使用由 open_id 单向派生的独立 profile。
+- `LARK_CLI_BIN`、`MEEGLE_BIN`：后台服务使用的绝对 CLI 路径，避免 launchd 等无交互环境的 PATH 不完整。
 - `BRIDGE_DATA_DIR`、`BRIDGE_DB_PATH`、`BRIDGE_RESOURCE_DIR`：SQLite 和附件持久化位置，生产环境应放在持久磁盘并限制目录权限。
 - `CODEX_MODEL`、`CODEX_PROFILE`：可选；留空时沿用服务账号的 Codex 默认配置。
 - `MAX_HISTORY_MESSAGES`：每轮提供给 Agent 的最近消息数，默认 12；这是消息数，不是工单数。
@@ -109,6 +118,8 @@ node --env-file=.env dist/src/main.js
 ```
 
 `doctor` 会检查 Codex、Meegle 登录、`lark-cli` profile、工作区规则和运行配置。启动日志出现 `service.ready` 后，在允许的群里发送：
+
+启用员工级 OAuth 时，`doctor` 不要求默认 Meegle profile 已登录，而是检查 CLI 可执行文件，并使用 override 中第一位员工验证 `contact:user:search` 权限。首次收单的授权过程不会保存 access token 到 bridge 数据库；token 仍由 Meegle CLI 自己管理，bridge 只保存发送者与已验证 profile/user_key 的绑定。
 
 ```text
 @工单机器人 创建一个风控处理工单：
@@ -145,9 +156,11 @@ Nick 扣款任务：请检查该订单是否需要扣款
 - 收不到消息：检查应用是否已发布、机器人是否在群中、长连接事件是否为 `im.message.receive_v1`，以及群/发送人白名单。
 - 能收消息但无法回复：检查机器人发言权限和 `im:message:send_as_bot`。
 - 附件下载失败：检查 `im:resource`，并确认附件属于当前消息且未超过 `MAX_RESOURCE_BYTES`。
-- `doctor` 中 Meegle 失败：重新完成 `meegle auth login --host project.feishu.cn`。
+- `doctor` 中 Meegle 失败：确认 `MEEGLE_BIN` 路径正确；未启用员工 OAuth 时重新完成 `meegle auth login --host project.feishu.cn`。
+- 首次使用一直提示未授权：先打开机器人返回的个人授权链接完成登录，再回复“已授权”；授权链接过期后重新发送工单取得新链接。
+- 身份验证失败：确认 `LARK_CLI_PROFILE` 已授权 `contact:user:search`，且员工在 OAuth 页面登录的是自己的飞书项目账号。
 - 某条消息显示“无法确认是否已经发生外部写入”：先在 Meegle 按订单号或标题查重，再发送一条新的明确指令；不要复制重放原始事件。
 
 ## 安全说明
 
-桥接服务会代表已登录的服务账号执行真实 Meegle 写操作。它不会取消插件的授权规则：新建可按工作区持续授权提交，更新已有工单仍需针对具体工单明确确认。建议先在测试群和测试空间完成端到端验证，再把生产群加入白名单。
+未启用员工 OAuth 时，桥接服务会代表已登录的服务账号执行真实 Meegle 写操作；启用后则只使用当前消息发送者已验证的独立 profile。两种模式都不会取消插件的授权规则：新建可按工作区持续授权提交，更新已有工单仍需针对具体工单明确确认。建议先在测试群和测试空间完成端到端验证，再把生产群加入白名单。

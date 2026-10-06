@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+if [ -z "${MEEGLE_REQUEST_PROFILE:-}" ]; then
+  echo "MEEGLE_REQUEST_PROFILE is required" >&2
+  exit 64
+fi
+
+if [ -z "${MEEGLE_REAL_BIN:-}" ]; then
+  echo "MEEGLE_REAL_BIN is required" >&2
+  exit 64
+fi
+
+for argument in "$@"; do
+  case "$argument" in
+    --profile|--profile=*)
+      echo "--profile is managed by the ticket bridge" >&2
+      exit 64
+      ;;
+  esac
+done
+
+exec "$MEEGLE_REAL_BIN" --profile "$MEEGLE_REQUEST_PROFILE" "$@"

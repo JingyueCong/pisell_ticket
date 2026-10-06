@@ -10,6 +10,8 @@ test("loadConfig parses allowlists and resolves paths", () => {
   const config = loadConfig({
     LARK_APP_ID: "cli_test",
     LARK_APP_SECRET: "secret",
+    LARK_CLI_PROFILE: "cli_test",
+    LARK_CLI_BIN: "/opt/bin/lark-cli",
     ALLOWED_CHAT_IDS: "oc_a, oc_b",
     ALLOWED_SENDER_IDS: "ou_a",
     YOKO_HANDOFF_CHAT_ID: "oc_yoko",
@@ -18,15 +20,23 @@ test("loadConfig parses allowlists and resolves paths", () => {
     BRIDGE_DATA_DIR: "./data",
     BRIDGE_DB_PATH: "./data/test.sqlite",
     BRIDGE_RESOURCE_DIR: "./data/resources",
+    PER_USER_MEEGLE_AUTH: "true",
+    MEEGLE_BIN: "/opt/bin/meegle",
+    MEEGLE_PROFILE_OVERRIDES: "ou_a=default,ou_b=ticket-bob",
     HEALTH_PORT: "0",
   });
 
   assert.deepEqual(config.lark.allowedChatIds, ["oc_a", "oc_b"]);
   assert.deepEqual(config.lark.allowedSenderIds, ["ou_a"]);
   assert.equal(config.lark.requireMention, false);
+  assert.equal(config.lark.cliBin, "/opt/bin/lark-cli");
   assert.equal(config.lark.handoffChatId, "oc_yoko");
   assert.equal(config.health.port, 0);
   assert.equal(config.codex.timeoutMs, 600_000);
+  assert.equal(config.meegleIdentity.enabled, true);
+  assert.equal(config.meegleIdentity.bin, "/opt/bin/meegle");
+  assert.equal(config.meegleIdentity.profileOverrides.get("ou_a"), "default");
+  assert.equal(config.meegleIdentity.profileOverrides.get("ou_b"), "ticket-bob");
   assert.equal(config.limits.maxHistoryMessages, 12);
   assert.equal(config.limits.maxHistoryAgeMs, 30 * 24 * 60 * 60_000);
   assert.equal(config.limits.draftTtlMs, 7 * 24 * 60 * 60_000);
