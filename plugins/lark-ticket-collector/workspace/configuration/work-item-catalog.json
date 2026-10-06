@@ -307,14 +307,14 @@
       "type_key": "6886d47112cff2ae4ae279e3",
       "platform_status": "active",
       "support_mode": "standard_create",
-      "intent_aliases": ["客服工单", "客户咨询", "售后", "运营跟进", "商家反馈"],
+      "intent_aliases": ["客服工单", "客户咨询", "售后", "运营跟进", "商家反馈", "上门服务", "现场记录", "会议记录", "录音工单"],
       "create_fields_profile": "workspace/configuration/work-item-routing.json#customer_service",
       "templates": [{"template_id": "3399515", "template_name": "默认客服工单类型"}],
       "attachments": [
         {"field_key": "field_f0d460", "field_name": "附件"},
         {"field_key": "field_9c373e", "field_name": "其他"}
       ],
-      "validation": {"level": "create_e2e", "work_item_id": "7126688803", "template_version": "66", "readiness": "not_audited"}
+      "validation": {"level": "create_e2e", "work_item_id": "7126688803", "template_version": "66", "readiness": "not_audited", "onsite_option_verified": "2026-10-06"}
     },
     {
       "slug": "pre_ticket",
