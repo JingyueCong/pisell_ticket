@@ -1,7 +1,7 @@
 import type { IntakeRoutePolicy, PairedWorkItemType } from "./types.js";
 
 const CREATE_INTENT =
-  /(?:创建|新建|提交|开)(?:一个|一张|个|张)?(?:[^，。\n]{0,16})?(?:工单|工作项|ticket|阻断性问题|内容维护|需求池|客户刷卡机|风控处理)|(?:给我|帮我)?建(?:一个|一张|个|张)?(?:[^，。\n]{0,16})?(?:工单|工作项|单)/iu;
+  /(?:创建|新建|提交|开)(?:一个|一张|个|张)?(?:[^，。\n]{0,16})?(?:工单|工作项|ticket|阻断性问题|内容维护|需求池|客户刷卡机|风控处理|上门服务)|(?:给我|帮我)?建(?:一个|一张|个|张)?(?:[^，。\n]{0,16})?(?:工单|工作项|单)/iu;
 const NON_CREATE_CONTEXT =
   /^(?:请)?(?:帮我)?(?:查询|查看|更新|修改|补充|关联|关闭|取消|删除|解释|检查)|(?:^|[\s：:])(?:为什么|怎么|如何|是否|能否|能不能|可不可以)(?:[^，。\n]{0,20})(?:创建|新建|工单)|(?:已经|已|刚刚|刚才|之前)创建/u;
 const STANDALONE_MODIFIER = /(?:单独|独立|仅|只)(?:需要|要|想|给我|帮我)?(?:创建|新建|提交|开|建)/u;
@@ -162,7 +162,7 @@ export function deriveIntakeRoutePolicy(content: string): IntakeRoutePolicy {
     return {
       mode: "customer_only",
       authoritative: true,
-      customerIssueOption: "上门服务工单",
+      customerIssueOption: "上门服务",
       reason: "visit_record_customer_service_alias",
     };
   }

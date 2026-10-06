@@ -58,14 +58,14 @@ test("generic creation starts from customer service while other explicit types r
 
 test("visit-record aliases create only the onsite customer-service main ticket", () => {
   for (const input of [
-    "创建上门服务工单",
+    "创建上门服务",
     "给我建一个现场记录工单",
     "提交会议记录工单",
     "创建录音工单",
   ]) {
     const route = deriveIntakeRoutePolicy(input);
     assert.equal(route.mode, "customer_only", input);
-    assert.equal(route.customerIssueOption, "上门服务工单", input);
+    assert.equal(route.customerIssueOption, "上门服务", input);
     assert.equal(route.pairedWorkItemType, undefined, input);
     assert.equal(route.authoritative, true, input);
   }

@@ -122,7 +122,7 @@
           {"alias": "T5 or 功能建议/改进", "mode": "customer_bundle", "customer_option_name": "T5功能建议/改进类-需求", "paired_type": "demand_pool"},
           {"alias": "客户刷卡机", "mode": "customer_bundle", "customer_option_name": "客户刷卡机", "paired_type": "customer_card_machine"},
           {"alias": "风控处理 or Chargeback", "mode": "customer_bundle", "customer_option_name": "风控处理", "paired_type": "risk_control"},
-          {"alias": "上门服务 or 现场记录 or 飞书妙记", "mode": "customer_only", "customer_option_name": "上门服务工单"}
+          {"alias": "上门服务 or 现场记录 or 飞书妙记", "mode": "customer_only", "customer_option_name": "上门服务"}
         ],
         "standalone_override_terms": ["单独创建", "独立创建", "仅创建", "只创建", "不要客服工单"],
         "content_maintenance_default": "customer_service_plus_t3_content_maintenance"
@@ -183,7 +183,7 @@
         "automatic_trigger": "one readable Feishu Minutes URL posted in a configured customer group",
         "require_mention": false,
         "source_option_name": "线下销售 / 运营转述",
-        "issue_type_option_name": "上门服务工单",
+        "issue_type_option_name": "上门服务",
         "create_paired_work_items": false,
         "customer_hint_source": "trusted source chat name",
         "customer_match": "unique CRM match required",

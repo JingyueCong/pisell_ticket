@@ -119,7 +119,7 @@ test("prompt locks trusted Feishu Minutes evidence to one onsite service ticket"
         mode: "customer_only",
         authoritative: true,
         reason: "trusted_visit_record_minutes_trigger",
-        customerIssueOption: "上门服务工单",
+        customerIssueOption: "上门服务",
       },
       visitRecord: {
         sourceChatId: "oc_customer",
@@ -142,7 +142,7 @@ test("prompt locks trusted Feishu Minutes evidence to one onsite service ticket"
   assert.match(prompt, /smart_summary: 讨论 POS 卡慢和菜单调整/);
   assert.match(prompt, /transcript_file: \/tmp\/resources\/om_visit\/minute\/transcript\.txt/);
   assert.match(prompt, /本轮固定只创建一张客服工单/);
-  assert.match(prompt, /对应问题类型.*上门服务工单/);
+  assert.match(prompt, /对应问题类型.*上门服务/);
   assert.match(prompt, /不得从会议中的问题点触发 T1\/T2\/T3\/T5/);
   assert.match(prompt, /完整逐字稿/);
   assert.match(prompt, /原始妙记链接/);

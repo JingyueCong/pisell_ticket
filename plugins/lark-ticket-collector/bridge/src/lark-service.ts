@@ -529,7 +529,7 @@ export class LarkTicketService {
         ? {
             mode: "customer_only",
             authoritative: true,
-            customerIssueOption: "上门服务工单",
+            customerIssueOption: "上门服务",
             reason: "trusted_visit_record_minutes_trigger",
           }
         : deriveIntakeRoutePolicy(message.content),
