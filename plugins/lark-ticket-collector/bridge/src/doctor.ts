@@ -91,7 +91,7 @@ async function main(): Promise<void> {
             name: "Feishu Minutes profile",
             ok: Boolean(config.lark.cliProfile),
             detail: config.lark.cliProfile
-              ? `${config.lark.cliProfile} (runtime still verifies minutes:minutes.basic:read)`
+              ? `${config.lark.cliProfile} (runtime verifies basic, artifacts, and transcript scopes)`
               : "LARK_CLI_PROFILE is required when VISIT_RECORD_CHAT_IDS is set",
           }),
         ]

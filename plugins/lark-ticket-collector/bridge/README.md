@@ -34,7 +34,7 @@
 
 在飞书开放平台创建企业自建应用并启用机器人能力：
 
-1. 在权限管理中至少申请 `im:message`、`im:message:send_as_bot`、`im:resource` 和 `im:chat.members:read`。启用员工级 Meegle OAuth 时，还要让 `LARK_CLI_PROFILE` 的用户授权 `contact:user:search`，用于核对 OAuth 账号确实属于当前消息发送者。启用上门服务会议自动收单时，应用还必须能接收群内非 @ 消息；`LARK_CLI_PROFILE` 对应用户需要授权 `minutes:minutes.basic:read`，并且该账号本身能访问目标妙记。如果机器人只接收群内 @ 消息，可按飞书控制台提示申请对应的群 @ 消息权限；如果要读取群内所有消息，需申请更高范围的群消息权限。
+1. 在权限管理中至少申请 `im:message`、`im:message:send_as_bot`、`im:resource` 和 `im:chat.members:read`。启用员工级 Meegle OAuth 时，还要让 `LARK_CLI_PROFILE` 的用户授权 `contact:user:search`，用于核对 OAuth 账号确实属于当前消息发送者。启用上门服务会议自动收单时，应用还必须能接收群内非 @ 消息；`LARK_CLI_PROFILE` 对应用户需要授权 `minutes:minutes.basic:read`、`minutes:minutes.artifacts:read` 和 `minutes:minutes.transcript:export`，并且该账号本身能访问目标妙记。如果机器人只接收群内 @ 消息，可按飞书控制台提示申请对应的群 @ 消息权限；如果要读取群内所有消息，需申请更高范围的群消息权限。
 2. 在事件订阅中选择“使用长连接接收事件”，订阅 `im.message.receive_v1`。
 3. 发布应用版本并通过管理员审核。
 4. 将机器人加入准备用于收单的群；机器人必须有发言权限。
@@ -173,7 +173,7 @@ https://tenant.feishu.cn/minutes/obcnu...
 - 能收消息但无法回复：检查机器人发言权限和 `im:message:send_as_bot`。
 - 附件下载失败：检查 `im:resource`，并确认附件属于当前消息且未超过 `MAX_RESOURCE_BYTES`。
 - 上门服务链接没有触发：确认群 ID 在 `VISIT_RECORD_CHAT_IDS`，应用能接收该群的非 @ 消息，机器人仍在群内，并且消息中是可识别的 `/minutes/<token>` 链接。
-- 上门服务提示妙记不可读：确认 `LARK_CLI_PROFILE` 的用户已授权 `minutes:minutes.basic:read`，该用户能在飞书中打开该妙记，而且妙记已经生成完成。
+- 上门服务提示妙记不可读：确认 `LARK_CLI_PROFILE` 的用户已授权 `minutes:minutes.basic:read`、`minutes:minutes.artifacts:read` 和 `minutes:minutes.transcript:export`，该用户能在飞书中打开该妙记，而且妙记已经生成完成。
 - 上门服务卡在字段：确认客服工单“对应问题类型”已有启用选项 `上门服务工单`；bridge 不会用其他问题类型代替。
 - `doctor` 中 Meegle 失败：确认 `MEEGLE_BIN` 路径正确；未启用员工 OAuth 时重新完成 `meegle auth login --host project.feishu.cn`。
 - 首次使用一直提示未授权：先打开机器人返回的个人授权链接完成登录，再回复“已授权”；授权链接过期后重新发送工单取得新链接。
