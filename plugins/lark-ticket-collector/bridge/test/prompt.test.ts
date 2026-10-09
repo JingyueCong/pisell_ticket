@@ -57,6 +57,11 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /创建内容维护工单.*默认表示客服工单 \+ T3 内容维护配套/);
   assert.match(prompt, /只有员工明确说“单独\/独立\/仅\/只创建内容维护工单”/);
   assert.match(prompt, /客服外向关联已回读验证/);
+  assert.match(prompt, /先上传该字段本轮需要归档的全部文件/);
+  assert.match(prompt, /最后只调用一次 `workitem update`/);
+  assert.match(prompt, /禁止按“上传一个→更新一次”循环/);
+  assert.match(prompt, /逐一核对本轮每个预期文件的名称\/标识以及总数/);
+  assert.match(prompt, /附件 token 不跨工作项复用/);
   assert.match(prompt, /没有明确提供工单问题等级，默认填写三星/);
   assert.match(prompt, /不得再把星级列为缺失项/);
   assert.match(prompt, /新建任何类型工作项时/);

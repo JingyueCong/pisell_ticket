@@ -102,6 +102,8 @@ meegle workitem update --work-item-id 工作项ID --project-key 空间key --role
 | 多选人员（`multi-user`） | 旧 userkey + 新 userkey，去重 |
 | 附件（`multi-file`） | 取旧附件数组，把新 +upload 拿到的 `{name,type,size,fileToken}` 拼上去，整体 stringify 写回（`update` 是覆盖语义，不取旧值会丢历史附件） |
 
+多个附件写入同一字段时，以“工作项 ID + 字段 key”为一个批次：先完成该批次全部 `attachment +upload`，收集全部文件描述；随后重新读取字段最新附件，仅执行一次 `workitem update` 写入去重后的完整数组。禁止逐个文件执行一次 update，因为第二次只携带单文件数组时会覆盖第一次。若写入后回读缺项，必须再次读取最新值，只合并缺失文件后重试，不能复用写入前的旧快照。不同工作项必须分别上传，`fileToken` 不跨工作项复用。
+
 **3. 覆盖写入** → 通过 `workitem update` 写入合并后的值
 
 ### 角色追加与删除
