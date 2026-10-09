@@ -20,7 +20,7 @@ interface ProcessResult {
 export const AGENT_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "draft"],
+  required: ["reply", "draft", "attachment_archive"],
   properties: {
     reply: { type: "string", minLength: 1 },
     draft: {
@@ -33,6 +33,46 @@ export const AGENT_OUTPUT_SCHEMA = {
         summary: { type: ["string", "null"] },
         missing_fields: { type: "array", items: { type: "string" }, maxItems: 50 },
         work_item_ids: { type: "array", items: { type: "string" }, maxItems: 50 },
+      },
+    },
+    attachment_archive: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "status",
+        "expected_bindings",
+        "verified_bindings",
+        "targets",
+        "note",
+      ],
+      properties: {
+        status: {
+          type: "string",
+          enum: ["not_applicable", "pending", "verified", "failed"],
+        },
+        expected_bindings: { type: "integer", minimum: 0 },
+        verified_bindings: { type: "integer", minimum: 0 },
+        targets: {
+          type: "array",
+          maxItems: 50,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "work_item_id",
+              "field_key",
+              "expected_files",
+              "verified_files",
+            ],
+            properties: {
+              work_item_id: { type: "string", minLength: 1 },
+              field_key: { type: "string", minLength: 1 },
+              expected_files: { type: "integer", minimum: 0 },
+              verified_files: { type: "integer", minimum: 0 },
+            },
+          },
+        },
+        note: { type: ["string", "null"] },
       },
     },
   },
@@ -67,9 +107,27 @@ const agentOutput = z.object({
     missing_fields: z.array(z.string()).max(50),
     work_item_ids: z.array(z.string()).max(50),
   }),
+  attachment_archive: z.object({
+    status: z.enum(["not_applicable", "pending", "verified", "failed"]),
+    expected_bindings: z.number().int().nonnegative(),
+    verified_bindings: z.number().int().nonnegative(),
+    targets: z
+      .array(
+        z.object({
+          work_item_id: z.string().min(1),
+          field_key: z.string().min(1),
+          expected_files: z.number().int().nonnegative(),
+          verified_files: z.number().int().nonnegative(),
+        }),
+      )
+      .max(50),
+    note: z.string().nullable(),
+  }),
 });
 
-export function parseAgentOutput(rawOutput: string): Pick<AgentResult, "text" | "draft"> {
+export function parseAgentOutput(
+  rawOutput: string,
+): Pick<AgentResult, "text" | "draft" | "attachmentArchive"> {
   const parsed = agentOutput.parse(JSON.parse(rawOutput));
   return {
     text: parsed.reply.trim(),
@@ -81,6 +139,20 @@ export function parseAgentOutput(rawOutput: string): Pick<AgentResult, "text" | 
       ...(parsed.draft.summary?.trim() ? { summary: parsed.draft.summary.trim() } : {}),
       missingFields: parsed.draft.missing_fields,
       workItemIds: parsed.draft.work_item_ids,
+    },
+    attachmentArchive: {
+      status: parsed.attachment_archive.status,
+      expectedBindings: parsed.attachment_archive.expected_bindings,
+      verifiedBindings: parsed.attachment_archive.verified_bindings,
+      targets: parsed.attachment_archive.targets.map((target) => ({
+        workItemId: target.work_item_id,
+        fieldKey: target.field_key,
+        expectedFiles: target.expected_files,
+        verifiedFiles: target.verified_files,
+      })),
+      ...(parsed.attachment_archive.note?.trim()
+        ? { note: parsed.attachment_archive.note.trim() }
+        : {}),
     },
   };
 }
@@ -281,7 +353,7 @@ export class CodexCliBackend implements AgentBackend {
         throw new Error("工单 Agent 未返回可发送的结果。");
       }
 
-      let parsed: Pick<AgentResult, "text" | "draft">;
+      let parsed: Pick<AgentResult, "text" | "draft" | "attachmentArchive">;
       try {
         parsed = parseAgentOutput(rawOutput);
       } catch (error) {

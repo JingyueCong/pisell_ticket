@@ -104,6 +104,8 @@ meegle workitem update --work-item-id 工作项ID --project-key 空间key --role
 
 多个附件写入同一字段时，以“工作项 ID + 字段 key”为一个批次：先完成该批次全部 `attachment +upload`，收集全部文件描述；随后重新读取字段最新附件，仅执行一次 `workitem update` 写入去重后的完整数组。禁止逐个文件执行一次 update，因为第二次只携带单文件数组时会覆盖第一次。若写入后回读缺项，必须再次读取最新值，只合并缺失文件后重试，不能复用写入前的旧快照。不同工作项必须分别上传，`fileToken` 不跨工作项复用。
 
+`workitem update --fields` 的外层参数是 JSON 数组；每个条目的 `field_value` 仍必须是附件数组再次 JSON.stringify 后得到的字符串。例如规范化结构是 `[{"field_key":"field_x","field_value":"[{\"name\":\"a.png\",...}]"}]`，不能把附件数组直接放进 `field_value`。平台返回结构校验错误时先用 `--dry-run` 检查归一化请求，再读取字段最新值并按上述 STRING 协议重建；同类失败最多重试 2 次。
+
 **3. 覆盖写入** → 通过 `workitem update` 写入合并后的值
 
 ### 角色追加与删除

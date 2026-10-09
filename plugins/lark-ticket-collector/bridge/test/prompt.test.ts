@@ -62,6 +62,11 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /禁止按“上传一个→更新一次”循环/);
   assert.match(prompt, /逐一核对本轮每个预期文件的名称\/标识以及总数/);
   assert.match(prompt, /附件 token 不跨工作项复用/);
+  assert.match(prompt, /field_value.*JSON\.stringify.*STRING/);
+  assert.match(prompt, /平台结构校验失败.*最多重试 2 次/);
+  assert.match(prompt, /attachment_archive.*强制完成门禁/);
+  assert.match(prompt, /expected_bindings=12/);
+  assert.match(prompt, /draft\.action 必须为 update/);
   assert.match(prompt, /没有明确提供工单问题等级，默认填写三星/);
   assert.match(prompt, /不得再把星级列为缺失项/);
   assert.match(prompt, /新建任何类型工作项时/);

@@ -130,7 +130,29 @@ export interface AgentRequest {
 export interface AgentResult {
   text: string;
   draft: DraftMemoryUpdate;
+  attachmentArchive: AttachmentArchiveReport;
   diagnostics: string[];
+}
+
+export type AttachmentArchiveStatus =
+  | "not_applicable"
+  | "pending"
+  | "verified"
+  | "failed";
+
+export interface AttachmentArchiveTarget {
+  workItemId: string;
+  fieldKey: string;
+  expectedFiles: number;
+  verifiedFiles: number;
+}
+
+export interface AttachmentArchiveReport {
+  status: AttachmentArchiveStatus;
+  expectedBindings: number;
+  verifiedBindings: number;
+  targets: AttachmentArchiveTarget[];
+  note?: string;
 }
 
 export interface AgentBackend {

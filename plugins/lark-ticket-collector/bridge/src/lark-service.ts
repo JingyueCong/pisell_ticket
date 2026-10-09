@@ -12,6 +12,7 @@ import {
 } from "@larksuiteoapi/node-sdk";
 
 import type { BridgeConfig } from "./config.js";
+import { enforceAttachmentCompletion } from "./attachment-gate.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import { logger } from "./logger.js";
@@ -363,12 +364,34 @@ export class LarkTicketService {
         this.config.limits.maxHistoryMessages,
         Date.now() - this.config.limits.maxHistoryAgeMs,
       );
-      const result = await this.agent.run({
+      const rawResult = await this.agent.run({
         envelope,
         history,
         ...(activeDraft ? { activeDraft } : {}),
         resourceRoot: this.config.storage.resourceDir,
       });
+      const hasReadableResources = [
+        ...(activeDraft?.resources ?? []),
+        ...envelope.resources,
+      ].some((resource) => Boolean(resource.localPath) && !resource.error);
+      const attachmentGate = enforceAttachmentCompletion({
+        result: rawResult,
+        hasReadableResources,
+      });
+      const result = {
+        ...rawResult,
+        text: attachmentGate.text,
+        draft: attachmentGate.draft,
+      };
+      if (attachmentGate.blocked) {
+        logger.warn("attachment.completion_blocked", {
+          messageId: message.messageId,
+          status: result.attachmentArchive.status,
+          expectedBindings: result.attachmentArchive.expectedBindings,
+          verifiedBindings: result.attachmentArchive.verifiedBindings,
+          workItemIds: result.draft.workItemIds,
+        });
+      }
       let resultText = result.text;
       const customerRoute =
         ["customer_bundle", "customer_only", "customer_auto"].includes(

@@ -137,7 +137,11 @@ test("Meegle real binary is resolved before the wrapper PATH is injected", () =>
 });
 
 test("agent output schema requires a user reply and structured draft state", () => {
-  assert.deepEqual(AGENT_OUTPUT_SCHEMA.required, ["reply", "draft"]);
+  assert.deepEqual(AGENT_OUTPUT_SCHEMA.required, [
+    "reply",
+    "draft",
+    "attachment_archive",
+  ]);
   assert.deepEqual(AGENT_OUTPUT_SCHEMA.properties.draft.properties.action.enum, [
     "none",
     "open",
@@ -158,6 +162,13 @@ test("structured agent output separates the employee reply from draft memory", (
           missing_fields: ["关联客户 / 店铺"],
           work_item_ids: [],
         },
+        attachment_archive: {
+          status: "not_applicable",
+          expected_bindings: 0,
+          verified_bindings: 0,
+          targets: [],
+          note: null,
+        },
       }),
     ),
     {
@@ -168,6 +179,12 @@ test("structured agent output separates the employee reply from draft memory", (
         summary: "菜单调整，等待店铺",
         missingFields: ["关联客户 / 店铺"],
         workItemIds: [],
+      },
+      attachmentArchive: {
+        status: "not_applicable",
+        expectedBindings: 0,
+        verifiedBindings: 0,
+        targets: [],
       },
     },
   );
