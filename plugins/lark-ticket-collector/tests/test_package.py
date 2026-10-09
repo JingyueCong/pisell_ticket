@@ -589,6 +589,19 @@ class PackageContractTests(unittest.TestCase):
         self.assertIn(
             "missing_confirmation_to_false", content["forbidden_inference"]
         )
+        estimated_completion = next(
+            field
+            for field in content["field_mapping"]
+            if field["target_field_key"] == "field_47cd28"
+        )
+        self.assertTrue(estimated_completion["explicit_target_value_precedence"])
+        self.assertEqual(
+            estimated_completion["default_when_source_missing"],
+            {
+                "strategy": "message_create_date",
+                "timezone": "Australia/Melbourne",
+            },
+        )
 
     def test_business_pairings_copy_all_verified_shared_fields_conditionally(self) -> None:
         business = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]["paired_business_work_item_policies"]
