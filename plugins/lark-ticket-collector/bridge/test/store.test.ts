@@ -301,3 +301,102 @@ test("store does not guess between concurrent drafts for the same participant", 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("store assigns one content producer per conversation in round-robin order", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  try {
+    const input = {
+      sourceChatId: "oc_producers",
+      producerNames: ["Annie", "Jane", "Kiddy"],
+    };
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_1", now: 1 }),
+      "Annie",
+    );
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_1", now: 2 }),
+      "Annie",
+      "the same draft must retain its producer",
+    );
+    assert.equal(
+      store.assignNextProducer({
+        sourceChatId: "oc_producers",
+        conversationKey: "draft_1",
+        producerNames: ["Kiddy", "Annie", "Jane"],
+        now: 2,
+      }),
+      "Annie",
+      "an existing draft stays sticky when its producer remains on a changed roster",
+    );
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_2", now: 3 }),
+      "Jane",
+    );
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_3", now: 4 }),
+      "Kiddy",
+    );
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_4", now: 5 }),
+      "Annie",
+      "the rotation must wrap to the first producer",
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("producer rotation resets to the first member when the ordered roster changes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  try {
+    assert.equal(
+      store.assignNextProducer({
+        sourceChatId: "oc_producers",
+        conversationKey: "draft_1",
+        producerNames: ["Annie", "Jane"],
+        now: 1,
+      }),
+      "Annie",
+    );
+    assert.equal(
+      store.assignNextProducer({
+        sourceChatId: "oc_producers",
+        conversationKey: "draft_2",
+        producerNames: ["Kiddy", "Annie", "Jane"],
+        now: 2,
+      }),
+      "Kiddy",
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("producer rotation continues after the bridge store restarts", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const databasePath = join(directory, "bridge.sqlite");
+  const input = {
+    sourceChatId: "oc_producers",
+    producerNames: ["Annie", "Jane"],
+  };
+  let store = new BridgeStore(databasePath);
+  try {
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_1", now: 1 }),
+      "Annie",
+    );
+    store.close();
+    store = new BridgeStore(databasePath);
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "draft_2", now: 2 }),
+      "Jane",
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

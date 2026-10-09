@@ -314,9 +314,36 @@ export class LarkTicketService {
     }
 
     try {
+      const messageKey = conversationKey({
+        chatId: message.chatId,
+        senderId: message.senderId,
+        messageId: message.messageId,
+        ...(message.threadId ? { threadId: message.threadId } : {}),
+        ...(message.rootId ? { rootId: message.rootId } : {}),
+      });
+      const activeDraft = this.store.activeDraft({
+        conversationKey: messageKey,
+        chatId: message.chatId,
+        senderId: message.senderId,
+        allowParticipantFallback: !(
+          message.threadId || message.rootId || message.replyToMessageId
+        ),
+      });
+      const preliminaryRoute = deriveIntakeRoutePolicy(message.content);
+      const explicitContentMaintenance =
+        preliminaryRoute.pairedWorkItemType === "content_maintenance" ||
+        preliminaryRoute.standaloneWorkItemType === "content_maintenance";
+      const continuingContentMaintenance =
+        !preliminaryRoute.authoritative &&
+        /(?:内容维护|T3)/iu.test(activeDraft?.ticketType ?? "");
+      const producerRotationKey = explicitContentMaintenance
+        ? messageKey
+        : continuingContentMaintenance
+          ? activeDraft?.conversationKey
+          : undefined;
       const [resources, producerSource, visitRecord] = await Promise.all([
         this.downloadResources(message),
-        this.readContentMaintenanceProducerSource(),
+        this.readContentMaintenanceProducerSource(producerRotationKey),
         automaticVisitRecord
           ? this.readVisitRecord(message)
           : Promise.resolve(undefined),
@@ -329,15 +356,6 @@ export class LarkTicketService {
         meegleIdentity,
         visitRecord,
       );
-      const messageKey = conversationKey(envelope);
-      const activeDraft = this.store.activeDraft({
-        conversationKey: messageKey,
-        chatId: envelope.chatId,
-        senderId: envelope.senderId,
-        allowParticipantFallback: !(
-          envelope.threadId || envelope.rootId || envelope.replyToMessageId
-        ),
-      });
       const contextKey = activeDraft?.conversationKey ?? messageKey;
       const userTranscript = this.transcriptText(envelope);
       const history = this.store.recentConversation(
@@ -575,7 +593,9 @@ export class LarkTicketService {
     });
   }
 
-  private async readContentMaintenanceProducerSource(): Promise<
+  private async readContentMaintenanceProducerSource(
+    rotationConversationKey?: string,
+  ): Promise<
     ContentMaintenanceProducerSource | undefined
   > {
     const source = this.config.lark.contentMaintenanceProducerSource;
@@ -592,10 +612,20 @@ export class LarkTicketService {
       if (!chatName) {
         return { ...base, error: "configured producer source chat has no readable name" };
       }
+      const producerRoster = parseProducerNames(chatName, source);
+      const selectedProducer = rotationConversationKey
+        ? this.store.assignNextProducer({
+            sourceChatId: source.chatId,
+            conversationKey: rotationConversationKey,
+            producerNames: producerRoster,
+          })
+        : undefined;
       return {
         ...base,
         chatName,
-        producerNames: parseProducerNames(chatName, source),
+        producerNames: selectedProducer ? [selectedProducer] : producerRoster,
+        producerRoster,
+        selectionMode: selectedProducer ? "round_robin_single" : "all",
       };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

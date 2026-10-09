@@ -26,7 +26,9 @@ test("prompt treats attachment content as untrusted evidence", () => {
       contentMaintenanceProducerSource: {
         chatId: "oc_producer",
         chatName: "内部任务沟通 制作：Annie/Jane 确认:Kiddy",
-        producerNames: ["Annie", "Jane"],
+        producerNames: ["Annie"],
+        producerRoster: ["Annie", "Jane"],
+        selectionMode: "round_robin_single",
         fetchedAt: 2,
       },
       resources: [
@@ -74,7 +76,11 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /bridge 还会在 Agent 返回后执行同一项强制回读校正/);
   assert.match(prompt, /workflow update-node --node-owners/);
   assert.match(prompt, /可信内容维护制作人来源/);
-  assert.match(prompt, /producer_names: Annie \/ Jane/);
+  assert.match(prompt, /producer_names: Annie/);
+  assert.match(prompt, /producer_roster: Annie \/ Jane/);
+  assert.match(prompt, /selection_mode: round_robin_single/);
+  assert.match(prompt, /必须只解析并写入这一人到“制作人&交付人”/);
+  assert.match(prompt, /不得同时写入 producer_roster 中的其他人/);
   assert.match(prompt, /不得再次向员工索取制作人/);
   assert.match(prompt, /source_message_id: om_1/);
   assert.match(prompt, /evidence\.png/);

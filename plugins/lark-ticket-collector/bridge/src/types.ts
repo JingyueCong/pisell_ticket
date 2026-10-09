@@ -45,6 +45,8 @@ export interface ContentMaintenanceProducerSource {
   chatId: string;
   chatName?: string;
   producerNames: string[];
+  producerRoster?: string[];
+  selectionMode?: "all" | "round_robin_single";
   fetchedAt: number;
   error?: string;
 }

@@ -180,7 +180,7 @@
           "role_name": "制作人&交付人",
           "observed_role_key": "role_c17278",
           "source": "runtime.json#content_maintenance.producer_role_source",
-          "value_policy": "每次创建前读取配置群当前群名并唯一解析全部制作人；角色和人员在线刷新，失败或冲突时停止创建并询问。"
+          "value_policy": "每次开启新草稿前读取配置群当前群名，按群名姓名顺序持久化轮班；每张工单仅写入一位制作人，同一草稿保持绑定，名单变化后从第一位重置。角色和人员在线刷新，失败或冲突时停止创建并询问。"
         }
       ],
       "templates": [

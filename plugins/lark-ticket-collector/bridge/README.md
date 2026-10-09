@@ -101,7 +101,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `ALLOWED_CHAT_IDS`：允许使用的群，逗号分隔。
 - `ALLOWED_SENDER_IDS`：允许使用的员工，逗号分隔。
 - `YOKO_HANDOFF_CHAT_ID`：阻断性问题自动交接群；留空则只创建工单、不发 Yoko 通知。
-- `CONTENT_PRODUCER_SOURCE_CHAT_ID`：内容维护制作人来源群；留空则无法自动读取制作人。
+- `CONTENT_PRODUCER_SOURCE_CHAT_ID`：内容维护制作人来源群；bridge 从群名的制作名单按顺序轮班，每张新内容维护工单只填一位，同一草稿保持绑定，名单变化后从第一位重置。留空则无法自动读取制作人。
 - `VISIT_RECORD_CHAT_IDS`：上门服务客户群，逗号分隔。群内出现且仅出现一个飞书妙记链接时自动处理，不需要 @；链接所在群的群名仅用作 CRM 客户检索线索，唯一匹配后才填写客户。单纯上传音频文件或发送普通文本不会自动建单。
 - `AUTO_VISIT_RECORD_GROUPS`：设为 `true` 后，不再需要逐个维护上门服务群 ID；机器人被主动加入的任意群都只对飞书妙记链接启用免 @ 自动处理。普通消息不会绕过 `ALLOWED_CHAT_IDS`，CRM 客户仍必须通过当前群名唯一匹配。
 - `PER_USER_MEEGLE_AUTH=true`：每位员工首次发消息时收到个人 OAuth 链接；完成后回复“已授权”，验证通过后重新发送原工单和附件。未授权、授权错账号或凭证失效时不会运行 Agent，也不会借用其他人的账号。

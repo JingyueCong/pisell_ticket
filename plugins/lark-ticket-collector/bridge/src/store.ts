@@ -145,6 +145,25 @@ export class BridgeStore {
       CREATE INDEX IF NOT EXISTS idx_ticket_drafts_active
         ON ticket_drafts(chat_id, sender_id, status, updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS producer_rotations (
+        source_chat_id TEXT PRIMARY KEY,
+        roster_json TEXT NOT NULL,
+        next_index INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS producer_assignments (
+        conversation_key TEXT PRIMARY KEY,
+        source_chat_id TEXT NOT NULL,
+        roster_json TEXT NOT NULL,
+        producer_name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_producer_assignments_source
+        ON producer_assignments(source_chat_id, updated_at DESC);
+
       CREATE TABLE IF NOT EXISTS message_resources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         message_id TEXT NOT NULL,
@@ -191,6 +210,81 @@ export class BridgeStore {
         `)
         .run(input.messageId, input.chatId, input.senderId, now, now);
       return true;
+    })();
+  }
+
+  assignNextProducer(input: {
+    sourceChatId: string;
+    conversationKey: string;
+    producerNames: string[];
+    now?: number;
+  }): string | undefined {
+    const roster = [
+      ...new Set(input.producerNames.map((name) => name.trim()).filter(Boolean)),
+    ];
+    if (!roster.length) return undefined;
+    const rosterJson = JSON.stringify(roster);
+    const now = input.now ?? Date.now();
+
+    return this.db.transaction(() => {
+      const existing = this.db
+        .prepare(`
+          SELECT producer_name, source_chat_id, roster_json
+          FROM producer_assignments
+          WHERE conversation_key = ?
+        `)
+        .get(input.conversationKey) as
+        | { producer_name: string; source_chat_id: string; roster_json: string }
+        | undefined;
+      if (
+        existing?.source_chat_id === input.sourceChatId &&
+        roster.includes(existing.producer_name)
+      ) {
+        this.db
+          .prepare(`
+            UPDATE producer_assignments
+            SET roster_json = ?, updated_at = ?
+            WHERE conversation_key = ?
+          `)
+          .run(rosterJson, now, input.conversationKey);
+        return existing.producer_name;
+      }
+
+      const rotation = this.db
+        .prepare(`
+          SELECT roster_json, next_index
+          FROM producer_rotations
+          WHERE source_chat_id = ?
+        `)
+        .get(input.sourceChatId) as { roster_json: string; next_index: number } | undefined;
+      const index = rotation?.roster_json === rosterJson ? rotation.next_index % roster.length : 0;
+      const selected = roster[index]!;
+      const nextIndex = (index + 1) % roster.length;
+
+      this.db
+        .prepare(`
+          INSERT INTO producer_rotations (source_chat_id, roster_json, next_index, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(source_chat_id) DO UPDATE SET
+            roster_json = excluded.roster_json,
+            next_index = excluded.next_index,
+            updated_at = excluded.updated_at
+        `)
+        .run(input.sourceChatId, rosterJson, nextIndex, now);
+      this.db
+        .prepare(`
+          INSERT INTO producer_assignments (
+            conversation_key, source_chat_id, roster_json, producer_name, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(conversation_key) DO UPDATE SET
+            source_chat_id = excluded.source_chat_id,
+            roster_json = excluded.roster_json,
+            producer_name = excluded.producer_name,
+            updated_at = excluded.updated_at
+        `)
+        .run(input.conversationKey, input.sourceChatId, rosterJson, selected, now, now);
+
+      return selected;
     })();
   }
 
