@@ -1,7 +1,10 @@
 import { createServer, type Server } from "node:http";
 import { mkdir } from "node:fs/promises";
 
-import { CodexCliBackend } from "./codex-backend.js";
+import {
+  CodexCliBackend,
+  CodexRuntimeCompatibilityError,
+} from "./codex-backend.js";
 import { loadConfig } from "./config.js";
 import { LarkTicketService } from "./lark-service.js";
 import { logger } from "./logger.js";
@@ -12,7 +15,7 @@ import { VisitRecordLoader } from "./visit-record.js";
 function startHealthServer(input: {
   host: string;
   port: number;
-  isReady: () => boolean;
+  status: () => { ready: boolean; reason?: string };
 }): Server | undefined {
   if (input.port === 0) return undefined;
   const server = createServer((request, response) => {
@@ -21,9 +24,16 @@ function startHealthServer(input: {
       response.end(JSON.stringify({ ok: false, error: "not_found" }));
       return;
     }
-    const ready = input.isReady();
-    response.writeHead(ready ? 200 : 503, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: ready }));
+    const status = input.status();
+    response.writeHead(status.ready ? 200 : 503, {
+      "content-type": "application/json",
+    });
+    response.end(
+      JSON.stringify({
+        ok: status.ready,
+        ...(!status.ready && status.reason ? { reason: status.reason } : {}),
+      }),
+    );
   });
   server.listen(input.port, input.host, () => {
     logger.info("health.listening", { host: input.host, port: input.port });
@@ -54,17 +64,20 @@ async function main(): Promise<void> {
     identityManager,
     visitRecordLoader,
   );
-  let ready = false;
+  let healthStatus: { ready: boolean; reason?: string } = {
+    ready: false,
+    reason: "starting",
+  };
   let shuttingDown = false;
   const health = startHealthServer({
     ...config.health,
-    isReady: () => ready,
+    status: () => healthStatus,
   });
 
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    ready = false;
+    healthStatus = { ready: false, reason: "stopping" };
     logger.info("service.stopping", { signal });
     health?.close();
     await service.disconnect().catch((error: unknown) => {
@@ -79,8 +92,31 @@ async function main(): Promise<void> {
   process.once("SIGINT", () => void shutdown("SIGINT").finally(() => process.exit(0)));
   process.once("SIGTERM", () => void shutdown("SIGTERM").finally(() => process.exit(0)));
 
-  await service.connect();
-  ready = true;
+  let startupStage: "codex_probe" | "lark_connect" = "codex_probe";
+  try {
+    const probe = await agent.probe();
+    logger.info("codex.runtime_probe_ready", { durationMs: probe.durationMs });
+    startupStage = "lark_connect";
+    await service.connect();
+  } catch (error) {
+    healthStatus = {
+      ready: false,
+      reason:
+        error instanceof CodexRuntimeCompatibilityError
+          ? "codex_runtime_probe_failed"
+          : startupStage === "lark_connect"
+            ? "lark_connect_failed"
+            : "service_start_failed",
+    };
+    logger.error("service.not_ready", {
+      stage: startupStage,
+      reason: healthStatus.reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  healthStatus = { ready: true };
   logger.info("service.ready", {
     allowedChatCount: config.lark.allowedChatIds.length,
     allowedSenderCount: config.lark.allowedSenderIds.length,

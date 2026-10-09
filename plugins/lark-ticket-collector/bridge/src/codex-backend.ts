@@ -6,6 +6,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
+import { AgentBackendError } from "./agent-failure.js";
 import type { BridgeConfig } from "./config.js";
 import { buildAgentPrompt } from "./prompt.js";
 import type { AgentBackend, AgentRequest, AgentResult } from "./types.js";
@@ -15,6 +16,42 @@ interface ProcessResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+}
+
+export interface CodexRuntimeProbeResult {
+  durationMs: number;
+}
+
+export class CodexRuntimeCompatibilityError extends AgentBackendError {
+  constructor(message: string) {
+    super(message, "codex_runtime_incompatible", "none");
+    this.name = "CodexRuntimeCompatibilityError";
+  }
+}
+
+export const CODEX_RUNTIME_PROBE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status"],
+  properties: {
+    status: { type: "string", enum: ["READY"] },
+  },
+} as const;
+
+const runtimeProbeOutput = z.object({ status: z.literal("READY") });
+
+export function parseCodexRuntimeProbeOutput(rawOutput: string): { status: "READY" } {
+  return runtimeProbeOutput.parse(JSON.parse(rawOutput));
+}
+
+export function isCodexRuntimeCompatibilityFailure(stderr: string): boolean {
+  return [
+    /supports_parallel_tool_calls/i,
+    /unknown field\s+[`'"]/i,
+    /field\s+[`'"][^`'"]+[`'"]\s+at line\s+\d+\s+column\s+\d+/i,
+    /failed to (?:load|parse).*(?:config|configuration)/i,
+    /error loading configuration/i,
+  ].some((pattern) => pattern.test(stderr));
 }
 
 export const AGENT_OUTPUT_SCHEMA = {
@@ -217,6 +254,30 @@ export function buildCodexArgs(input: {
   return args;
 }
 
+export function buildCodexRuntimeProbeArgs(input: {
+  config: BridgeConfig;
+  outputPath: string;
+  schemaPath: string;
+}): string[] {
+  const args = [
+    "exec",
+    "--ephemeral",
+    "--json",
+    "--skip-git-repo-check",
+    "--approve-for-me",
+    "-C",
+    input.config.codex.workspace,
+    "-o",
+    input.outputPath,
+    "--output-schema",
+    input.schemaPath,
+  ];
+  if (input.config.codex.model) args.push("--model", input.config.codex.model);
+  if (input.config.codex.profile) args.push("--profile", input.config.codex.profile);
+  args.push("-");
+  return args;
+}
+
 function tail(value: string, max = 4_000): string {
   return value.length <= max ? value : value.slice(value.length - max);
 }
@@ -295,6 +356,75 @@ function extractFallbackText(stdout: string): string | undefined {
 export class CodexCliBackend implements AgentBackend {
   constructor(private readonly config: BridgeConfig) {}
 
+  async probe(): Promise<CodexRuntimeProbeResult> {
+    const tempDirectory = await mkdtemp(join(tmpdir(), "ticket-collector-codex-probe-"));
+    const outputPath = join(tempDirectory, "probe-result.json");
+    const schemaPath = join(tempDirectory, "probe.schema.json");
+    await writeFile(schemaPath, JSON.stringify(CODEX_RUNTIME_PROBE_SCHEMA), {
+      encoding: "utf8",
+    });
+    const startedAt = Date.now();
+
+    try {
+      let result: ProcessResult;
+      try {
+        result = await runProcess({
+          executable: this.config.codex.bin,
+          args: buildCodexRuntimeProbeArgs({
+            config: this.config,
+            outputPath,
+            schemaPath,
+          }),
+          cwd: this.config.codex.workspace,
+          stdin: [
+            "You are a startup compatibility probe.",
+            "Do not call tools, inspect files, or modify anything.",
+            "Return only the requested JSON object with status READY.",
+          ].join(" "),
+          timeoutMs: this.config.codex.probeTimeoutMs,
+        });
+      } catch (error) {
+        throw new CodexRuntimeCompatibilityError(
+          `Codex CLI 无法启动：${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      if (result.timedOut) {
+        throw new CodexRuntimeCompatibilityError(
+          `Codex 启动探针在 ${this.config.codex.probeTimeoutMs}ms 内未完成。`,
+        );
+      }
+      if (result.exitCode !== 0) {
+        const stderrSummary = tail(result.stderr).trim().split(/\r?\n/, 1)[0];
+        throw new CodexRuntimeCompatibilityError(
+          `Codex 启动探针失败（exit=${result.exitCode ?? "unknown"}）。${
+            stderrSummary ? ` CLI: ${stderrSummary}` : ""
+          }`,
+        );
+      }
+
+      let rawOutput = "";
+      try {
+        rawOutput = (await readFile(outputPath, "utf8")).trim();
+      } catch {
+        rawOutput = extractFallbackText(result.stdout) ?? "";
+      }
+      try {
+        parseCodexRuntimeProbeOutput(rawOutput);
+      } catch (error) {
+        throw new CodexRuntimeCompatibilityError(
+          `Codex 启动探针返回无效结果：${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      return { durationMs: Date.now() - startedAt };
+    } finally {
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  }
+
   async run(request: AgentRequest): Promise<AgentResult> {
     const tempDirectory = await mkdtemp(join(tmpdir(), "ticket-collector-codex-"));
     const outputPath = join(tempDirectory, "last-message.md");
@@ -315,21 +445,28 @@ export class CodexCliBackend implements AgentBackend {
     });
 
     try {
-      const result = await runProcess({
-        executable: this.config.codex.bin,
-        args,
-        cwd: this.config.codex.workspace,
-        stdin: buildAgentPrompt(request, { meegleCommand: meegleWrapperPath }),
-        timeoutMs: this.config.codex.timeoutMs,
-        env: request.envelope.meegleIdentity
-          ? {
-              ...process.env,
-              MEEGLE_REQUEST_PROFILE: request.envelope.meegleIdentity.profile,
-              MEEGLE_REAL_BIN: meegleRealBin,
-              PATH: `${join(process.cwd(), "bin")}:${process.env.PATH ?? ""}`,
-            }
-          : process.env,
-      });
+      let result: ProcessResult;
+      try {
+        result = await runProcess({
+          executable: this.config.codex.bin,
+          args,
+          cwd: this.config.codex.workspace,
+          stdin: buildAgentPrompt(request, { meegleCommand: meegleWrapperPath }),
+          timeoutMs: this.config.codex.timeoutMs,
+          env: request.envelope.meegleIdentity
+            ? {
+                ...process.env,
+                MEEGLE_REQUEST_PROFILE: request.envelope.meegleIdentity.profile,
+                MEEGLE_REAL_BIN: meegleRealBin,
+                PATH: `${join(process.cwd(), "bin")}:${process.env.PATH ?? ""}`,
+              }
+            : process.env,
+        });
+      } catch (error) {
+        throw new CodexRuntimeCompatibilityError(
+          `Codex CLI 无法启动：${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
 
       let rawOutput = "";
       try {
@@ -343,6 +480,13 @@ export class CodexCliBackend implements AgentBackend {
       }
       if (result.exitCode !== 0) {
         const stderrSummary = tail(result.stderr).trim().split(/\r?\n/, 1)[0];
+        if (isCodexRuntimeCompatibilityFailure(result.stderr)) {
+          throw new CodexRuntimeCompatibilityError(
+            `Codex 运行时不兼容（exit=${result.exitCode ?? "unknown"}）。${
+              stderrSummary ? ` CLI: ${stderrSummary}` : ""
+            }`,
+          );
+        }
         throw new Error(
           `工单 Agent 执行失败（exit=${result.exitCode ?? "unknown"}）。${
             stderrSummary ? ` CLI: ${stderrSummary}` : ""

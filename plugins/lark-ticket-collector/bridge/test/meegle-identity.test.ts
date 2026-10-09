@@ -35,6 +35,7 @@ function config(dataDir: string): BridgeConfig {
       bin: "codex",
       workspace: "/tmp/workspace",
       timeoutMs: 180_000,
+      probeTimeoutMs: 30_000,
     },
     storage: {
       dataDir,

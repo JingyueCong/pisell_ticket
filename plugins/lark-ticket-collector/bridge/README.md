@@ -12,6 +12,7 @@
 - 草稿默认 7 天过期；只向 Codex 提供默认 30 天内最多 12 条相关消息，旧记录不会在升级时被删除。
 - 复用插件现有的类型路由、查重、创建/更新授权、附件归档和流程就绪检查。
 - SQLite 记录消息状态并按飞书 `message_id` 幂等。同一消息失败后不会自动重放，以免外部写入结果不明时重复建单。
+- 服务启动时会先运行一次无工具、无写入的结构化 `codex exec` 探针；探针通过后才连接飞书，因此不会给每条工单增加等待时间。探针失败时 `/healthz` 返回 503，机器人不接收工单。
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
 - 可启用“机器人入群即监听”：任何主动加入机器人的群内出现一条飞书妙记链接后，无需 @，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务”客服主单。群内普通消息仍受原群白名单与 `REQUIRE_MENTION` 约束。
@@ -110,6 +111,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `LARK_CLI_BIN`、`MEEGLE_BIN`：后台服务使用的绝对 CLI 路径，避免 launchd 等无交互环境的 PATH 不完整。
 - `BRIDGE_DATA_DIR`、`BRIDGE_DB_PATH`、`BRIDGE_RESOURCE_DIR`：SQLite 和附件持久化位置，生产环境应放在持久磁盘并限制目录权限。
 - `CODEX_MODEL`、`CODEX_PROFILE`：可选；留空时沿用服务账号的 Codex 默认配置。
+- `CODEX_PROBE_TIMEOUT_MS`：启动探针超时，默认 30000 毫秒。探针只在服务启动时运行，不进入逐条工单处理链路。
 - `MAX_HISTORY_MESSAGES`：每轮提供给 Agent 的最近消息数，默认 12；这是消息数，不是工单数。
 - `MAX_HISTORY_AGE_DAYS`：超过该时间的历史不再进入模型上下文，默认 30 天；不会删除 SQLite 原始记录。
 - `DRAFT_TTL_HOURS`：未完成结构化草稿的有效期，默认 168 小时（7 天）。过期草稿不会继续补填。
@@ -127,7 +129,7 @@ npm run build
 node --env-file=.env dist/src/main.js
 ```
 
-`doctor` 会检查 Codex、Meegle 登录、`lark-cli` profile、工作区规则和运行配置。启动日志出现 `service.ready` 后，在允许的群里发送：
+`doctor` 会检查 Codex 版本、执行一次真实的无写入结构化输出探针，并检查 Meegle、`lark-cli` profile、工作区规则和运行配置。启动日志先出现 `codex.runtime_probe_ready`、再出现 `service.ready` 后，才可在允许的群里发送：
 
 启用员工级 OAuth 时，`doctor` 不要求默认 Meegle profile 已登录，而是检查 CLI 可执行文件，并使用 override 中第一位员工验证 `contact:user:search` 权限。首次收单的授权过程不会保存 access token 到 bridge 数据库；token 仍由 Meegle CLI 自己管理，bridge 只保存发送者与已验证 profile/user_key 的绑定。
 
@@ -185,6 +187,7 @@ https://tenant.feishu.cn/minutes/obcnu...
 - 首次使用一直提示未授权：先打开机器人返回的个人授权链接完成登录，再回复“已授权”；授权链接过期后重新发送工单取得新链接。
 - 身份验证失败：确认 `LARK_CLI_PROFILE` 已授权 `contact:user:search`，且员工在 OAuth 页面登录的是自己的飞书项目账号。
 - 某条消息显示“无法确认是否已经发生外部写入”：先在 Meegle 按订单号或标题查重，再发送一条新的明确指令；不要复制重放原始事件。
+- `/healthz` 返回 `codex_runtime_probe_failed`：Codex CLI、共享配置或认证不兼容。此时服务不会连接飞书，也不会执行工单写入；更新或修复 Codex 后重启服务，并运行 `doctor`，不要仅用 `codex --version` 作为验证。
 
 ## 安全说明
 

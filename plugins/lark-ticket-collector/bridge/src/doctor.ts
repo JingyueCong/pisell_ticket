@@ -4,6 +4,7 @@ import { constants } from "node:fs";
 import { join } from "node:path";
 
 import { loadConfig } from "./config.js";
+import { CodexCliBackend } from "./codex-backend.js";
 
 interface Check {
   name: string;
@@ -50,6 +51,23 @@ async function fileCheck(
   }
 }
 
+async function codexRuntimeProbeCheck(config: ReturnType<typeof loadConfig>): Promise<Check> {
+  try {
+    const result = await new CodexCliBackend(config).probe();
+    return {
+      name: "Codex runtime probe",
+      ok: true,
+      detail: `READY in ${result.durationMs}ms`,
+    };
+  } catch (error) {
+    return {
+      name: "Codex runtime probe",
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const larkArgs = [
@@ -69,6 +87,7 @@ async function main(): Promise<void> {
   ];
   const checks = await Promise.all([
     run(config.codex.bin, ["--version"], config.codex.workspace),
+    codexRuntimeProbeCheck(config),
     run(
       config.meegleIdentity.bin,
       config.meegleIdentity.enabled

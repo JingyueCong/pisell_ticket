@@ -3,7 +3,10 @@ import test from "node:test";
 
 import {
   AGENT_OUTPUT_SCHEMA,
+  buildCodexRuntimeProbeArgs,
   buildCodexArgs,
+  isCodexRuntimeCompatibilityFailure,
+  parseCodexRuntimeProbeOutput,
   parseAgentOutput,
   resolveExecutablePath,
 } from "../src/codex-backend.js";
@@ -32,6 +35,7 @@ const config: BridgeConfig = {
     bin: "codex",
     workspace: "/tmp/workspace",
     timeoutMs: 180_000,
+    probeTimeoutMs: 30_000,
   },
   storage: {
     dataDir: "/tmp/data",
@@ -78,6 +82,39 @@ test("Codex CLI args use automatic approval without a conflicting sandbox flag",
   );
   assert.ok(!args.includes("--sandbox"));
   assert.ok(!args.includes("-s"));
+});
+
+test("Codex startup probe uses structured output without ticket resources", () => {
+  const args = buildCodexRuntimeProbeArgs({
+    config,
+    outputPath: "/tmp/probe.json",
+    schemaPath: "/tmp/probe.schema.json",
+  });
+
+  assert.deepEqual(
+    args.slice(args.indexOf("--output-schema"), args.indexOf("--output-schema") + 2),
+    ["--output-schema", "/tmp/probe.schema.json"],
+  );
+  assert.ok(args.includes("--ephemeral"));
+  assert.ok(!args.includes("--add-dir"));
+  assert.ok(!args.includes("--image"));
+  assert.deepEqual(parseCodexRuntimeProbeOutput('{"status":"READY"}'), {
+    status: "READY",
+  });
+  assert.throws(() => parseCodexRuntimeProbeOutput('{"status":"NO"}'));
+});
+
+test("Codex configuration schema failures are classified before ticket execution", () => {
+  assert.equal(
+    isCodexRuntimeCompatibilityFailure(
+      "field `supports_parallel_tool_calls` at line 130 column 5",
+    ),
+    true,
+  );
+  assert.equal(
+    isCodexRuntimeCompatibilityFailure("network connection closed after tool execution"),
+    false,
+  );
 });
 
 test("verified Meegle identity is pinned into Codex command environment", () => {

@@ -12,6 +12,7 @@ import {
 } from "@larksuiteoapi/node-sdk";
 
 import type { BridgeConfig } from "./config.js";
+import { buildAgentFailureReply } from "./agent-failure.js";
 import { enforceAttachmentCompletion } from "./attachment-gate.js";
 import { enforceDraftRouteContinuation } from "./draft-continuation.js";
 import { KeyedQueue } from "./keyed-queue.js";
@@ -76,14 +77,6 @@ function messageEvidenceText(message: NormalizedMessage): string {
     }
   }
   return [message.content, raw].filter(Boolean).join("\n");
-}
-
-function errorMessage(messageId: string): string {
-  return [
-    "这条工单消息处理失败，当前无法确认是否已经发生外部写入。",
-    `消息 ID：${messageId}`,
-    "为避免重复建单，机器人不会自动重试同一消息；请由管理员先核对 Meegle 后再重新发送。",
-  ].join("\n");
 }
 
 export class LarkTicketService {
@@ -493,7 +486,7 @@ export class LarkTicketService {
                 reason,
                 "请确认妙记已生成完成、已共享给当前飞书账号，并由管理员补齐妙记读取权限后，重新发送同一妙记链接。",
               ].join("\n")
-            : errorMessage(message.messageId);
+            : buildAgentFailureReply(message.messageId, error);
         await this.channel.send(
           message.chatId,
           { markdown: reply },

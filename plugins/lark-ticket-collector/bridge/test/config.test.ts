@@ -38,6 +38,7 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.lark.handoffChatId, "oc_yoko");
   assert.equal(config.health.port, 0);
   assert.equal(config.codex.timeoutMs, 600_000);
+  assert.equal(config.codex.probeTimeoutMs, 30_000);
   assert.equal(config.meegleIdentity.enabled, true);
   assert.equal(config.meegleIdentity.bin, "/opt/bin/meegle");
   assert.equal(config.meegleIdentity.projectKey, "pisell");

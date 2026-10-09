@@ -36,6 +36,7 @@ const schema = z.object({
   CODEX_MODEL: optionalString,
   CODEX_PROFILE: optionalString,
   CODEX_TIMEOUT_MS: positiveInt(600_000),
+  CODEX_PROBE_TIMEOUT_MS: positiveInt(30_000),
   PER_USER_MEEGLE_AUTH: z
     .enum(["true", "false"])
     .default("false")
@@ -158,6 +159,7 @@ export interface BridgeConfig {
     model?: string;
     profile?: string;
     timeoutMs: number;
+    probeTimeoutMs: number;
   };
   storage: {
     dataDir: string;
@@ -218,6 +220,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       ...(parsed.CODEX_MODEL ? { model: parsed.CODEX_MODEL } : {}),
       ...(parsed.CODEX_PROFILE ? { profile: parsed.CODEX_PROFILE } : {}),
       timeoutMs: parsed.CODEX_TIMEOUT_MS,
+      probeTimeoutMs: parsed.CODEX_PROBE_TIMEOUT_MS,
     },
     storage: {
       dataDir: resolve(cwd, parsed.BRIDGE_DATA_DIR),
