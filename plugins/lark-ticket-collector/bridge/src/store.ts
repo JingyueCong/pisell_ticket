@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import Database from "better-sqlite3";
@@ -13,6 +13,24 @@ import type {
 } from "./types.js";
 
 type MessageStatus = "processing" | "completed" | "failed";
+export type OperationStatus = "started" | "succeeded" | "failed" | "info";
+export type OperationDetailValue = string | number | boolean | null | string[] | number[];
+export type OperationDetail = Record<string, OperationDetailValue>;
+
+export interface MessageOperation {
+  id: number;
+  messageId: string;
+  step: string;
+  status: OperationStatus;
+  detail: OperationDetail;
+  createdAt: number;
+}
+
+export interface StaleResourceRecord {
+  id: number;
+  messageId: string;
+  localPath: string;
+}
 
 interface MessageRow {
   status: MessageStatus;
@@ -89,11 +107,18 @@ export class BridgeStore {
   private readonly db: Database.Database;
 
   constructor(path: string) {
-    mkdirSync(dirname(path), { recursive: true });
+    const directory = dirname(path);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    chmodSync(directory, 0o700);
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.migrate();
+    chmodSync(path, 0o600);
+    for (const suffix of ["-wal", "-shm"]) {
+      const sidecar = `${path}${suffix}`;
+      if (existsSync(sidecar)) chmodSync(sidecar, 0o600);
+    }
   }
 
   close(): void {
@@ -174,8 +199,51 @@ export class BridgeStore {
         sha256 TEXT,
         size INTEGER,
         error_text TEXT,
+        created_at INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0,
         UNIQUE(message_id, file_key)
       );
+
+      CREATE TABLE IF NOT EXISTS message_operations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        step TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('started', 'succeeded', 'failed', 'info')),
+        detail_json TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_message_operations_message
+        ON message_operations(message_id, id);
+      CREATE INDEX IF NOT EXISTS idx_message_operations_created
+        ON message_operations(created_at);
+    `);
+
+    const resourceColumns = this.db
+      .prepare("PRAGMA table_info(message_resources)")
+      .all() as Array<{ name: string }>;
+    const names = new Set(resourceColumns.map((column) => column.name));
+    if (!names.has("created_at")) {
+      this.db.exec("ALTER TABLE message_resources ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!names.has("updated_at")) {
+      this.db.exec("ALTER TABLE message_resources ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_message_resources_updated
+      ON message_resources(updated_at)`);
+    this.db.exec(`
+      UPDATE message_resources
+      SET created_at = COALESCE(
+            NULLIF(created_at, 0),
+            (SELECT created_at FROM inbound_messages WHERE inbound_messages.message_id = message_resources.message_id),
+            CAST(unixepoch('now') AS INTEGER) * 1000
+          ),
+          updated_at = COALESCE(
+            NULLIF(updated_at, 0),
+            (SELECT updated_at FROM inbound_messages WHERE inbound_messages.message_id = message_resources.message_id),
+            CAST(unixepoch('now') AS INTEGER) * 1000
+          )
+      WHERE created_at = 0 OR updated_at = 0
     `);
   }
 
@@ -306,6 +374,93 @@ export class BridgeStore {
         WHERE message_id = ?
       `)
       .run(errorText.slice(0, 4_000), Date.now(), messageId);
+  }
+
+  recordOperation(input: {
+    messageId: string;
+    step: string;
+    status: OperationStatus;
+    detail?: OperationDetail;
+    createdAt?: number;
+  }): void {
+    this.db
+      .prepare(`
+        INSERT INTO message_operations (message_id, step, status, detail_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      .run(
+        input.messageId,
+        input.step.slice(0, 100),
+        input.status,
+        JSON.stringify(input.detail ?? {}),
+        input.createdAt ?? Date.now(),
+      );
+  }
+
+  messageOperations(messageId: string): MessageOperation[] {
+    const rows = this.db
+      .prepare(`
+        SELECT id, message_id, step, status, detail_json, created_at
+        FROM message_operations WHERE message_id = ? ORDER BY id
+      `)
+      .all(messageId) as Array<{
+      id: number;
+      message_id: string;
+      step: string;
+      status: OperationStatus;
+      detail_json: string;
+      created_at: number;
+    }>;
+    return rows.map((row) => {
+      let detail: OperationDetail = {};
+      try {
+        detail = JSON.parse(row.detail_json) as OperationDetail;
+      } catch {
+        detail = {};
+      }
+      return {
+        id: row.id,
+        messageId: row.message_id,
+        step: row.step,
+        status: row.status,
+        detail,
+        createdAt: row.created_at,
+      };
+    });
+  }
+
+  messageAudit(messageId: string): unknown {
+    const message = this.db
+      .prepare(`
+        SELECT message_id, chat_id, sender_id, status, error_text, created_at, updated_at
+        FROM inbound_messages WHERE message_id = ?
+      `)
+      .get(messageId);
+    const resources = this.db
+      .prepare(`
+        SELECT id, file_key, resource_type, file_name, local_path, sha256, size,
+               error_text, created_at, updated_at
+        FROM message_resources WHERE message_id = ? ORDER BY id
+      `)
+      .all(messageId);
+    return { message, operations: this.messageOperations(messageId), resources };
+  }
+
+  operationalSummary(limit = 20): unknown {
+    const counts = this.db
+      .prepare("SELECT status, COUNT(*) AS count FROM inbound_messages GROUP BY status")
+      .all();
+    const openDrafts = this.db
+      .prepare("SELECT COUNT(*) AS count FROM ticket_drafts WHERE status = 'open'")
+      .get();
+    const failed = this.db
+      .prepare(`
+        SELECT message_id, chat_id, sender_id, error_text, updated_at
+        FROM inbound_messages WHERE status = 'failed'
+        ORDER BY updated_at DESC LIMIT ?
+      `)
+      .all(limit);
+    return { counts, openDrafts, recentFailed: failed };
   }
 
   addConversationMessage(input: {
@@ -578,17 +733,20 @@ export class BridgeStore {
   }
 
   saveResources(messageId: string, resources: DownloadedResource[]): void {
+    const now = Date.now();
     const statement = this.db.prepare(`
       INSERT INTO message_resources (
-        message_id, file_key, resource_type, file_name, local_path, sha256, size, error_text
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        message_id, file_key, resource_type, file_name, local_path, sha256, size,
+        error_text, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(message_id, file_key) DO UPDATE SET
         resource_type = excluded.resource_type,
         file_name = excluded.file_name,
         local_path = excluded.local_path,
         sha256 = excluded.sha256,
         size = excluded.size,
-        error_text = excluded.error_text
+        error_text = excluded.error_text,
+        updated_at = excluded.updated_at
     `);
 
     this.db.transaction(() => {
@@ -602,8 +760,77 @@ export class BridgeStore {
           resource.sha256 ?? null,
           resource.size ?? null,
           resource.error ?? null,
+          now,
+          now,
         );
       }
+    })();
+  }
+
+  expireDrafts(now = Date.now()): number {
+    return this.db
+      .prepare(`UPDATE ticket_drafts SET status = 'expired', updated_at = ?
+        WHERE status = 'open' AND expires_at <= ?`)
+      .run(now, now).changes;
+  }
+
+  staleResourceRecords(cutoff: number): StaleResourceRecord[] {
+    const protectedPaths = new Set<string>();
+    const openDrafts = this.db
+      .prepare("SELECT resources_json FROM ticket_drafts WHERE status = 'open'")
+      .all() as Array<{ resources_json: string }>;
+    for (const draft of openDrafts) {
+      for (const resource of parseResources(draft.resources_json)) {
+        if (resource.localPath) protectedPaths.add(resource.localPath);
+      }
+    }
+    const rows = this.db
+      .prepare(`
+        SELECT id, message_id, local_path FROM message_resources
+        WHERE updated_at < ? AND local_path IS NOT NULL
+      `)
+      .all(cutoff) as Array<{ id: number; message_id: string; local_path: string }>;
+    return rows
+      .filter((row) => !protectedPaths.has(row.local_path))
+      .map((row) => ({ id: row.id, messageId: row.message_id, localPath: row.local_path }));
+  }
+
+  deleteResourceRecord(id: number): void {
+    this.db.prepare("DELETE FROM message_resources WHERE id = ?").run(id);
+  }
+
+  pruneAudit(cutoff: number): {
+    operations: number;
+    conversations: number;
+    drafts: number;
+    inbound: number;
+    resourceErrors: number;
+  } {
+    return this.db.transaction(() => {
+      const operations = this.db
+        .prepare("DELETE FROM message_operations WHERE created_at < ?")
+        .run(cutoff).changes;
+      const conversations = this.db
+        .prepare(`
+          DELETE FROM conversation_messages
+          WHERE created_at < ? AND conversation_key NOT IN (
+            SELECT conversation_key FROM ticket_drafts WHERE status = 'open'
+          )
+        `)
+        .run(cutoff).changes;
+      const drafts = this.db
+        .prepare("DELETE FROM ticket_drafts WHERE status != 'open' AND updated_at < ?")
+        .run(cutoff).changes;
+      const resourceErrors = this.db
+        .prepare(`DELETE FROM message_resources
+          WHERE updated_at < ? AND local_path IS NULL`)
+        .run(cutoff).changes;
+      const inbound = this.db
+        .prepare(`DELETE FROM inbound_messages
+          WHERE status != 'processing' AND updated_at < ?
+            AND message_id NOT IN (SELECT message_id FROM message_resources)`)
+        .run(cutoff).changes;
+      return { operations, conversations, drafts, inbound, resourceErrors };
     })();
   }
 }

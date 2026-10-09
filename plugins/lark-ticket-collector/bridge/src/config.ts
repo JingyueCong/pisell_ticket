@@ -24,6 +24,8 @@ const schema = z.object({
   ALLOWED_CHAT_IDS: z.string().default(""),
   ALLOWED_SENDER_IDS: z.string().default(""),
   YOKO_HANDOFF_CHAT_ID: optionalString,
+  OPS_ALERT_CHAT_ID: optionalString,
+  OPS_ALERT_COOLDOWN_MS: positiveInt(300_000),
   CONTENT_PRODUCER_SOURCE_CHAT_ID: optionalString,
   VISIT_RECORD_CHAT_IDS: z.string().default(""),
   AUTO_VISIT_RECORD_GROUPS: z
@@ -37,6 +39,9 @@ const schema = z.object({
   CODEX_PROFILE: optionalString,
   CODEX_TIMEOUT_MS: positiveInt(600_000),
   CODEX_PROBE_TIMEOUT_MS: positiveInt(30_000),
+  CODEX_PROBE_INTERVAL_MS: positiveInt(30 * 60_000),
+  CODEX_PROBE_FAILURE_THRESHOLD: positiveInt(2),
+  CODEX_MAX_CONCURRENT_RUNS: positiveInt(2),
   PER_USER_MEEGLE_AUTH: z
     .enum(["true", "false"])
     .default("false")
@@ -55,6 +60,9 @@ const schema = z.object({
   MAX_HISTORY_AGE_DAYS: positiveInt(30),
   DRAFT_TTL_HOURS: positiveInt(7 * 24),
   MAX_RESOURCE_BYTES: positiveInt(25 * 1024 * 1024),
+  RESOURCE_RETENTION_DAYS: positiveInt(30),
+  AUDIT_RETENTION_DAYS: positiveInt(180),
+  MAINTENANCE_INTERVAL_MS: positiveInt(60 * 60_000),
 });
 
 const runtimeSchema = z
@@ -143,6 +151,8 @@ export interface BridgeConfig {
     requireMention: boolean;
     contentMaintenanceProducerSource?: ContentMaintenanceProducerSourceConfig;
     handoffChatId?: string;
+    opsAlertChatId?: string;
+    opsAlertCooldownMs: number;
     visitRecordChatIds: string[];
     visitRecordAllGroups: boolean;
   };
@@ -160,6 +170,9 @@ export interface BridgeConfig {
     profile?: string;
     timeoutMs: number;
     probeTimeoutMs: number;
+    probeIntervalMs: number;
+    probeFailureThreshold: number;
+    maxConcurrentRuns: number;
   };
   storage: {
     dataDir: string;
@@ -176,6 +189,11 @@ export interface BridgeConfig {
   health: {
     host: string;
     port: number;
+  };
+  maintenance: {
+    resourceRetentionMs: number;
+    auditRetentionMs: number;
+    intervalMs: number;
   };
 }
 
@@ -201,6 +219,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       ...(parsed.YOKO_HANDOFF_CHAT_ID
         ? { handoffChatId: parsed.YOKO_HANDOFF_CHAT_ID }
         : {}),
+      ...(parsed.OPS_ALERT_CHAT_ID
+        ? { opsAlertChatId: parsed.OPS_ALERT_CHAT_ID }
+        : {}),
+      opsAlertCooldownMs: parsed.OPS_ALERT_COOLDOWN_MS,
       ...(contentMaintenanceProducerSource
         ? { contentMaintenanceProducerSource }
         : {}),
@@ -221,6 +243,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       ...(parsed.CODEX_PROFILE ? { profile: parsed.CODEX_PROFILE } : {}),
       timeoutMs: parsed.CODEX_TIMEOUT_MS,
       probeTimeoutMs: parsed.CODEX_PROBE_TIMEOUT_MS,
+      probeIntervalMs: parsed.CODEX_PROBE_INTERVAL_MS,
+      probeFailureThreshold: parsed.CODEX_PROBE_FAILURE_THRESHOLD,
+      maxConcurrentRuns: parsed.CODEX_MAX_CONCURRENT_RUNS,
     },
     storage: {
       dataDir: resolve(cwd, parsed.BRIDGE_DATA_DIR),
@@ -237,6 +262,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     health: {
       host: parsed.HEALTH_HOST,
       port: parsed.HEALTH_PORT,
+    },
+    maintenance: {
+      resourceRetentionMs: parsed.RESOURCE_RETENTION_DAYS * 24 * 60 * 60_000,
+      auditRetentionMs: parsed.AUDIT_RETENTION_DAYS * 24 * 60 * 60_000,
+      intervalMs: parsed.MAINTENANCE_INTERVAL_MS,
     },
   };
 }

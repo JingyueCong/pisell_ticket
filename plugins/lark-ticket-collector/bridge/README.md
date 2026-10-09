@@ -9,10 +9,12 @@
 - 支持私聊和群聊 @ 机器人，支持文字、图片和常见消息附件。
 - 按 `chat_id + sender_open_id + thread/root message` 隔离上下文；没有回复线程时，只会把最近的未过期草稿作为候选续填上下文。
 - 未完成工单会保存结构化草稿（类型、事实摘要、缺失字段、已验证工单号和附件引用），支持下一条消息补字段并继续使用原截图；新工单不会复用旧草稿字段。
-- 草稿默认 7 天过期；只向 Codex 提供默认 30 天内最多 12 条相关消息，旧记录不会在升级时被删除。
+- 草稿默认 7 天过期；只向 Codex 提供默认 30 天内最多 12 条相关消息。后台维护会自动清理过期草稿、超过保留期且未被开放草稿引用的附件，以及旧审计记录。
 - 复用插件现有的类型路由、查重、创建/更新授权、附件归档和流程就绪检查。
 - SQLite 记录消息状态并按飞书 `message_id` 幂等。同一消息失败后不会自动重放，以免外部写入结果不明时重复建单。
-- 服务启动时会先运行一次无工具、无写入的结构化 `codex exec` 探针；探针通过后才连接飞书，因此不会给每条工单增加等待时间。探针失败时 `/healthz` 返回 503，机器人不接收工单。
+- 服务启动时会先运行一次无工具、无写入的结构化 `codex exec` 探针；运行中默认每 30 分钟在无业务任务时复检。连续两次失败会把 `/healthz` 降为 503 并暂停接单，恢复后自动重新接单，因此不会给单条工单增加探针等待时间。
+- 所有 Codex 进程共享全局并发上限（默认 2），避免不同员工同时提交时耗尽 Mac mini 资源；同一员工仍保持串行。
+- 每条消息保存不含业务正文的步骤级操作日志；未知外部写入失败不自动重试，管理员可按消息 ID 查看、核对并记录人工处置。
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
 - 可启用“机器人入群即监听”：任何主动加入机器人的群内出现一条飞书妙记链接后，无需 @，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务”客服主单。群内普通消息仍受原群白名单与 `REQUIRE_MENTION` 约束。
@@ -82,6 +84,7 @@ ALLOWED_CHAT_IDS=oc_xxx
 ALLOWED_SENDER_IDS=ou_xxx,ou_yyy
 REQUIRE_MENTION=true
 YOKO_HANDOFF_CHAT_ID=oc_yoko_group
+OPS_ALERT_CHAT_ID=oc_private_ops_group
 CONTENT_PRODUCER_SOURCE_CHAT_ID=oc_content_group
 # 指定客户群中发送飞书妙记链接时自动创建上门服务客服主单，多个群用逗号分隔。
 VISIT_RECORD_CHAT_IDS=oc_customer_a,oc_customer_b
@@ -102,6 +105,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `ALLOWED_CHAT_IDS`：允许使用的群，逗号分隔。
 - `ALLOWED_SENDER_IDS`：允许使用的员工，逗号分隔。
 - `YOKO_HANDOFF_CHAT_ID`：阻断性问题自动交接群；留空则只创建工单、不发 Yoko 通知。
+- `OPS_ALERT_CHAT_ID`：可选的私有运维群。运行探针降级、恢复和消息处理失败只发到该群；留空时不向业务群发送运维信息。
 - `CONTENT_PRODUCER_SOURCE_CHAT_ID`：内容维护制作人来源群；bridge 从群名的制作名单按顺序轮班，每张新内容维护工单只填一位，同一草稿保持绑定，名单变化后从第一位重置。留空则无法自动读取制作人。
 - `VISIT_RECORD_CHAT_IDS`：上门服务客户群，逗号分隔。群内出现且仅出现一个飞书妙记链接时自动处理，不需要 @；链接所在群的群名仅用作 CRM 客户检索线索，唯一匹配后才填写客户。单纯上传音频文件或发送普通文本不会自动建单。
 - `AUTO_VISIT_RECORD_GROUPS`：设为 `true` 后，不再需要逐个维护上门服务群 ID；机器人被主动加入的任意群都只对飞书妙记链接启用免 @ 自动处理。普通消息不会绕过 `ALLOWED_CHAT_IDS`，CRM 客户仍必须通过当前群名唯一匹配。
@@ -111,7 +115,10 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `LARK_CLI_BIN`、`MEEGLE_BIN`：后台服务使用的绝对 CLI 路径，避免 launchd 等无交互环境的 PATH 不完整。
 - `BRIDGE_DATA_DIR`、`BRIDGE_DB_PATH`、`BRIDGE_RESOURCE_DIR`：SQLite 和附件持久化位置，生产环境应放在持久磁盘并限制目录权限。
 - `CODEX_MODEL`、`CODEX_PROFILE`：可选；留空时沿用服务账号的 Codex 默认配置。
-- `CODEX_PROBE_TIMEOUT_MS`：启动探针超时，默认 30000 毫秒。探针只在服务启动时运行，不进入逐条工单处理链路。
+- `CODEX_PROBE_TIMEOUT_MS`：单次结构化探针超时，默认 30000 毫秒。
+- `CODEX_PROBE_INTERVAL_MS`、`CODEX_PROBE_FAILURE_THRESHOLD`：后台复检间隔和降级阈值，默认 30 分钟、连续 2 次；业务任务运行时跳过本轮探针。
+- `CODEX_MAX_CONCURRENT_RUNS`：全局 Codex 并发上限，默认 2。
+- `RESOURCE_RETENTION_DAYS`、`AUDIT_RETENTION_DAYS`、`MAINTENANCE_INTERVAL_MS`：附件、审计和清理周期，默认 30 天、180 天、1 小时；开放草稿引用的附件不会被删除。
 - `MAX_HISTORY_MESSAGES`：每轮提供给 Agent 的最近消息数，默认 12；这是消息数，不是工单数。
 - `MAX_HISTORY_AGE_DAYS`：超过该时间的历史不再进入模型上下文，默认 30 天；不会删除 SQLite 原始记录。
 - `DRAFT_TTL_HOURS`：未完成结构化草稿的有效期，默认 168 小时（7 天）。过期草稿不会继续补填。
@@ -172,7 +179,7 @@ https://tenant.feishu.cn/minutes/obcnu...
 - 工作目录为 `bridge/`；启动命令为 `node --env-file=.env dist/src/main.js`。
 - 异常自动重启，但不要删除 SQLite 数据库和资源目录。
 - 对 `/healthz` 做本机探活；日志采集时屏蔽密钥环境变量。
-- 定期备份 SQLite 与附件目录，并按公司的数据保留策略清理。
+- 定期备份 SQLite 与附件目录；内置保留期清理只删除已超期且不被开放草稿引用的数据。
 - 升级前先停止进程、备份数据、执行 `npm ci && npm run typecheck && npm test && npm run build`，再启动新版本。
 
 ## 故障处理
@@ -187,8 +194,11 @@ https://tenant.feishu.cn/minutes/obcnu...
 - 首次使用一直提示未授权：先打开机器人返回的个人授权链接完成登录，再回复“已授权”；授权链接过期后重新发送工单取得新链接。
 - 身份验证失败：确认 `LARK_CLI_PROFILE` 已授权 `contact:user:search`，且员工在 OAuth 页面登录的是自己的飞书项目账号。
 - 某条消息显示“无法确认是否已经发生外部写入”：先在 Meegle 按订单号或标题查重，再发送一条新的明确指令；不要复制重放原始事件。
-- `/healthz` 返回 `codex_runtime_probe_failed`：Codex CLI、共享配置或认证不兼容。此时服务不会连接飞书，也不会执行工单写入；更新或修复 Codex 后重启服务，并运行 `doctor`，不要仅用 `codex --version` 作为验证。
+- 查看失败审计：在 `bridge/` 运行 `npm run ops -- summary`，再运行 `npm run ops -- show <message-id>`；人工核对后可用 `npm run ops -- review <message-id> <处置说明>` 留痕。该命令不会重试或修改 Meegle。
+- `/healthz` 返回 `codex_runtime_probe_failed`：Codex CLI、共享配置或认证不兼容。启动探针失败时不会连接飞书；运行期探针连续失败时保持连接但暂停接单，后续探针通过会自动恢复。修复后仍应运行 `doctor`，不要仅用 `codex --version` 作为验证。
 
 ## 安全说明
 
 未启用员工 OAuth 时，桥接服务会代表已登录的服务账号执行真实 Meegle 写操作；启用后则只使用当前消息发送者已验证的独立 profile。两种模式都不会取消插件的授权规则：新建可按工作区持续授权提交，更新已有工单仍需针对具体工单明确确认。建议先在测试群和测试空间完成端到端验证，再把生产群加入白名单。
+
+Bridge 启动时设置进程 `umask 077`，并强制运行目录与附件目录为 `0700`、SQLite 和附件文件为 `0600`。部署账号之外的本机用户不应获得这些目录权限。

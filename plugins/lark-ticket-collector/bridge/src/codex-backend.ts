@@ -7,6 +7,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 import { z } from "zod";
 
 import { AgentBackendError } from "./agent-failure.js";
+import { ConcurrencyLimiter } from "./concurrency-limiter.js";
 import type { BridgeConfig } from "./config.js";
 import { buildAgentPrompt } from "./prompt.js";
 import type { AgentBackend, AgentRequest, AgentResult } from "./types.js";
@@ -354,9 +355,21 @@ function extractFallbackText(stdout: string): string | undefined {
 }
 
 export class CodexCliBackend implements AgentBackend {
-  constructor(private readonly config: BridgeConfig) {}
+  private readonly limiter: ConcurrencyLimiter;
+
+  constructor(private readonly config: BridgeConfig) {
+    this.limiter = new ConcurrencyLimiter(config.codex.maxConcurrentRuns);
+  }
+
+  canProbeWithoutDelay(): boolean {
+    return this.limiter.idle;
+  }
 
   async probe(): Promise<CodexRuntimeProbeResult> {
+    return this.limiter.run(() => this.executeProbe());
+  }
+
+  private async executeProbe(): Promise<CodexRuntimeProbeResult> {
     const tempDirectory = await mkdtemp(join(tmpdir(), "ticket-collector-codex-probe-"));
     const outputPath = join(tempDirectory, "probe-result.json");
     const schemaPath = join(tempDirectory, "probe.schema.json");
@@ -426,6 +439,10 @@ export class CodexCliBackend implements AgentBackend {
   }
 
   async run(request: AgentRequest): Promise<AgentResult> {
+    return this.limiter.run(() => this.executeRun(request));
+  }
+
+  private async executeRun(request: AgentRequest): Promise<AgentResult> {
     const tempDirectory = await mkdtemp(join(tmpdir(), "ticket-collector-codex-"));
     const outputPath = join(tempDirectory, "last-message.md");
     const schemaPath = join(tempDirectory, "agent-output.schema.json");

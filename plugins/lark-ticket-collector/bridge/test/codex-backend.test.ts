@@ -23,6 +23,7 @@ const config: BridgeConfig = {
     visitRecordAllGroups: false,
     allowedSenderIds: [],
     requireMention: true,
+    opsAlertCooldownMs: 300_000,
   },
   meegleIdentity: {
     enabled: false,
@@ -36,6 +37,9 @@ const config: BridgeConfig = {
     workspace: "/tmp/workspace",
     timeoutMs: 180_000,
     probeTimeoutMs: 30_000,
+    probeIntervalMs: 1_800_000,
+    probeFailureThreshold: 2,
+    maxConcurrentRuns: 2,
   },
   storage: {
     dataDir: "/tmp/data",
@@ -50,6 +54,11 @@ const config: BridgeConfig = {
     maxResourceBytes: 25 * 1024 * 1024,
   },
   health: { host: "127.0.0.1", port: 8787 },
+  maintenance: {
+    resourceRetentionMs: 30 * 24 * 60 * 60_000,
+    auditRetentionMs: 180 * 24 * 60 * 60_000,
+    intervalMs: 60 * 60_000,
+  },
 };
 
 const request: AgentRequest = {

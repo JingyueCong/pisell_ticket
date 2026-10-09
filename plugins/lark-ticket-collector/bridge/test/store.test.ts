@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
+import Database from "better-sqlite3";
 
 import { BridgeStore } from "../src/store.js";
 
@@ -33,6 +35,69 @@ test("store deduplicates completed and failed inbound messages", () => {
       store.claimMessage({ messageId: "om_2", chatId: "oc_1", senderId: "ou_1" }),
       false,
     );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("store migrates legacy resource rows and restricts database permissions", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const databasePath = join(directory, "bridge.sqlite");
+  const legacy = new Database(databasePath);
+  legacy.exec(`
+    CREATE TABLE inbound_messages (
+      message_id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, sender_id TEXT NOT NULL,
+      status TEXT NOT NULL, response_text TEXT, error_text TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE message_resources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, message_id TEXT NOT NULL,
+      file_key TEXT NOT NULL, resource_type TEXT NOT NULL, file_name TEXT,
+      local_path TEXT, sha256 TEXT, size INTEGER, error_text TEXT,
+      UNIQUE(message_id, file_key)
+    );
+    INSERT INTO inbound_messages VALUES ('om_old', 'oc', 'ou', 'completed', NULL, NULL, 10, 20);
+    INSERT INTO message_resources (message_id, file_key, resource_type)
+      VALUES ('om_old', 'file_old', 'file');
+  `);
+  legacy.close();
+  const store = new BridgeStore(databasePath);
+  try {
+    const audit = JSON.stringify(store.messageAudit("om_old"));
+    assert.match(audit, /"created_at":10/);
+    assert.equal(statSync(databasePath).mode & 0o777, 0o600);
+    assert.equal(statSync(directory).mode & 0o777, 0o700);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("store records a per-message operation journal for safe recovery", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  try {
+    store.claimMessage({ messageId: "om_audit", chatId: "oc_1", senderId: "ou_1" });
+    store.recordOperation({
+      messageId: "om_audit",
+      step: "agent_execution",
+      status: "started",
+      detail: { resourceCount: 2 },
+      createdAt: 10,
+    });
+    store.recordOperation({
+      messageId: "om_audit",
+      step: "message_failed",
+      status: "failed",
+      detail: { externalWriteState: "unknown" },
+      createdAt: 20,
+    });
+    assert.deepEqual(
+      store.messageOperations("om_audit").map((operation) => [operation.step, operation.status]),
+      [["agent_execution", "started"], ["message_failed", "failed"]],
+    );
+    assert.match(JSON.stringify(store.messageAudit("om_audit")), /externalWriteState/);
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });

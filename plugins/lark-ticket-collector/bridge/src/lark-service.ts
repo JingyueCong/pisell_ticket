@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Readable } from "node:stream";
 
@@ -12,7 +12,7 @@ import {
 } from "@larksuiteoapi/node-sdk";
 
 import type { BridgeConfig } from "./config.js";
-import { buildAgentFailureReply } from "./agent-failure.js";
+import { AgentBackendError, buildAgentFailureReply } from "./agent-failure.js";
 import { enforceAttachmentCompletion } from "./attachment-gate.js";
 import { enforceDraftRouteContinuation } from "./draft-continuation.js";
 import { KeyedQueue } from "./keyed-queue.js";
@@ -82,6 +82,8 @@ function messageEvidenceText(message: NormalizedMessage): string {
 export class LarkTicketService {
   readonly channel: LarkChannel;
   private readonly queue = new KeyedQueue();
+  private accepting = true;
+  private readonly alertTimes = new Map<string, number>();
 
   constructor(
     private readonly config: BridgeConfig,
@@ -140,12 +142,37 @@ export class LarkTicketService {
   }
 
   async connect(): Promise<void> {
-    await mkdir(this.config.storage.resourceDir, { recursive: true });
+    await mkdir(this.config.storage.resourceDir, { recursive: true, mode: 0o700 });
+    await chmod(this.config.storage.resourceDir, 0o700);
     await this.channel.connect();
   }
 
   async disconnect(): Promise<void> {
     await this.channel.disconnect();
+  }
+
+  setAccepting(value: boolean): void {
+    this.accepting = value;
+  }
+
+  async sendOperationalAlert(input: { key: string; markdown: string }): Promise<boolean> {
+    const target = this.config.lark.opsAlertChatId;
+    if (!target) return false;
+    const now = Date.now();
+    const last = this.alertTimes.get(input.key) ?? 0;
+    if (now - last < this.config.lark.opsAlertCooldownMs) return false;
+    this.alertTimes.set(input.key, now);
+    try {
+      await this.channel.send(target, { markdown: input.markdown });
+      return true;
+    } catch (error) {
+      this.alertTimes.delete(input.key);
+      logger.error("ops.alert_failed", {
+        key: input.key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
   }
 
   private registerHandlers(): void {
@@ -175,6 +202,7 @@ export class LarkTicketService {
       ) {
         return;
       }
+
       if (
         message.chatType === "group" &&
         this.config.lark.requireMention &&
@@ -184,6 +212,7 @@ export class LarkTicketService {
       ) {
         return;
       }
+
       if (
         this.config.lark.allowedSenderIds.length > 0 &&
         !this.config.lark.allowedSenderIds.includes(message.senderId)
@@ -192,6 +221,20 @@ export class LarkTicketService {
           messageId: message.messageId,
           chatId: message.chatId,
           senderId: message.senderId,
+        });
+        return;
+      }
+
+      if (!this.accepting) {
+        void this.channel.send(
+          message.chatId,
+          { markdown: "工单 Agent 运行环境当前未通过健康检查，本条消息没有处理，也没有写入 Meegle。请等待恢复通知后重新发送。" },
+          { replyTo: message.messageId },
+        ).catch((error: unknown) => {
+          logger.warn("message.not_ready_reply_failed", {
+            messageId: message.messageId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
         return;
       }
@@ -239,6 +282,12 @@ export class LarkTicketService {
       logger.info("message.duplicate_ignored", { messageId: message.messageId });
       return;
     }
+    this.store.recordOperation({
+      messageId: message.messageId,
+      step: "message_claimed",
+      status: "succeeded",
+      detail: { chatId: message.chatId, senderId: message.senderId },
+    });
 
     logger.info("message.processing", {
       messageId: message.messageId,
@@ -256,6 +305,12 @@ export class LarkTicketService {
           messageText: message.content,
         });
         if (gate.kind === "blocked") {
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "identity_authorization",
+            status: "info",
+            detail: { result: "blocked" },
+          });
           this.store.completeMessage(message.messageId, gate.reply);
           await this.channel.send(
             message.chatId,
@@ -269,6 +324,12 @@ export class LarkTicketService {
           return;
         }
         meegleIdentity = gate.identity;
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "identity_authorization",
+          status: "succeeded",
+          detail: { userKey: gate.identity.userKey },
+        });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         const reply = [
@@ -276,6 +337,12 @@ export class LarkTicketService {
           "请联系管理员检查个人授权与飞书通讯录读取权限后，再发送一条新的工单消息。",
         ].join("\n");
         this.store.failMessage(message.messageId, reason);
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "identity_authorization",
+          status: "failed",
+          detail: { error: reason.slice(0, 1_000) },
+        });
         logger.error("message.identity_failed", {
           messageId: message.messageId,
           senderId: message.senderId,
@@ -349,6 +416,16 @@ export class LarkTicketService {
           : Promise.resolve(undefined),
       ]);
       this.store.saveResources(message.messageId, resources);
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "resources_downloaded",
+        status: resources.some((resource) => resource.error) ? "info" : "succeeded",
+        detail: {
+          total: resources.length,
+          readable: resources.filter((resource) => resource.localPath && !resource.error).length,
+          errors: resources.filter((resource) => resource.error).length,
+        },
+      });
       const envelope = this.toEnvelope(
         message,
         resources,
@@ -363,6 +440,11 @@ export class LarkTicketService {
         this.config.limits.maxHistoryMessages,
         Date.now() - this.config.limits.maxHistoryAgeMs,
       );
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "agent_execution",
+        status: "started",
+      });
       const rawResult = await this.agent.run({
         envelope,
         history,
@@ -387,6 +469,18 @@ export class LarkTicketService {
         text: attachmentGate.text,
         draft: routeContinuation.draft,
       };
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "agent_execution",
+        status: "succeeded",
+        detail: {
+          draftAction: result.draft.action,
+          workItemIds: result.draft.workItemIds,
+          attachmentStatus: result.attachmentArchive.status,
+          expectedBindings: result.attachmentArchive.expectedBindings,
+          verifiedBindings: result.attachmentArchive.verifiedBindings,
+        },
+      });
       if (routeContinuation.continued) {
         logger.info("draft.route_correction_continued", {
           messageId: message.messageId,
@@ -426,6 +520,12 @@ export class LarkTicketService {
             nodeId: correction.nodeId,
             ownerUserKey: correction.ownerUserKey,
           });
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "customer_owner_verification",
+            status: "succeeded",
+            detail: { workItemId: customerWorkItemId, ownerUserKey: correction.ownerUserKey },
+          });
         } catch (error) {
           logger.warn("customer.intake_owner_failed", {
             messageId: message.messageId,
@@ -437,6 +537,15 @@ export class LarkTicketService {
             "",
             `注意：客服工单 #${customerWorkItemId} 已保留，但“创建工单”节点负责人未能回读确认为当前提交员工；管理员只需校正该节点负责人，不要重复建单。`,
           ].join("\n");
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "customer_owner_verification",
+            status: "failed",
+            detail: {
+              workItemId: customerWorkItemId,
+              error: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
+            },
+          });
         }
       }
       const reply = truncate(resultText, this.config.limits.maxReplyChars);
@@ -466,9 +575,20 @@ export class LarkTicketService {
         resources: envelope.resources,
         ttlMs: this.config.limits.draftTtlMs,
       });
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "draft_persisted",
+        status: "succeeded",
+        detail: { action: result.draft.action },
+      });
       this.store.completeMessage(message.messageId, reply);
 
       await this.channel.send(message.chatId, { markdown: reply }, { replyTo: message.messageId });
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "reply_sent",
+        status: "succeeded",
+      });
       logger.info("message.completed", {
         messageId: message.messageId,
         diagnosticsCount: result.diagnostics.length,
@@ -477,7 +597,27 @@ export class LarkTicketService {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.store.failMessage(message.messageId, reason);
+      const externalWriteState =
+        error instanceof AgentBackendError ? error.externalWriteState : "unknown";
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "message_failed",
+        status: "failed",
+        detail: { error: reason.slice(0, 1_000), externalWriteState },
+      });
       logger.error("message.failed", { messageId: message.messageId, error: reason });
+      void this.sendOperationalAlert({
+        key: `message_failed:${message.messageId}`,
+        markdown: [
+          "**工单 Agent 处理失败**",
+          `消息 ID：${message.messageId}`,
+          `会话：${message.chatId}`,
+          `提交人：${message.senderId}`,
+          `外部写入状态：${externalWriteState}`,
+          `错误：${reason.slice(0, 500)}`,
+          "请先用运维审计命令核对，再决定是否让员工重发；系统不会自动重试。",
+        ].join("\n"),
+      });
       try {
         const reply =
           error instanceof VisitRecordError
@@ -503,7 +643,8 @@ export class LarkTicketService {
 
   private async downloadResources(message: NormalizedMessage): Promise<DownloadedResource[]> {
     const directory = join(this.config.storage.resourceDir, message.messageId);
-    await mkdir(directory, { recursive: true });
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
 
     return Promise.all(
       message.resources.map(async (resource, index): Promise<DownloadedResource> => {
@@ -539,7 +680,7 @@ export class LarkTicketService {
           }
           const name = safeName(resource, index);
           const path = join(directory, `${String(index + 1).padStart(2, "0")}-${name}`);
-          await writeFile(path, buffer, { flag: "wx" });
+          await writeFile(path, buffer, { flag: "wx", mode: 0o600 });
           return {
             ...base,
             fileName: name,

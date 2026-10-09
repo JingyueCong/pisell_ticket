@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "doctor": "tsx src/doctor.ts",
+    "ops": "node --env-file=.env --import tsx src/ops.ts",
     "dev": "tsx watch src/main.ts",
     "workspace:init": "tsx src/init-workspace.ts",
     "start": "node dist/src/main.js",

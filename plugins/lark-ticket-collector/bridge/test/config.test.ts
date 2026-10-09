@@ -39,6 +39,10 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.health.port, 0);
   assert.equal(config.codex.timeoutMs, 600_000);
   assert.equal(config.codex.probeTimeoutMs, 30_000);
+  assert.equal(config.codex.probeIntervalMs, 30 * 60_000);
+  assert.equal(config.codex.probeFailureThreshold, 2);
+  assert.equal(config.codex.maxConcurrentRuns, 2);
+  assert.equal(config.lark.opsAlertCooldownMs, 300_000);
   assert.equal(config.meegleIdentity.enabled, true);
   assert.equal(config.meegleIdentity.bin, "/opt/bin/meegle");
   assert.equal(config.meegleIdentity.projectKey, "pisell");
@@ -47,6 +51,8 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.limits.maxHistoryMessages, 12);
   assert.equal(config.limits.maxHistoryAgeMs, 30 * 24 * 60 * 60_000);
   assert.equal(config.limits.draftTtlMs, 7 * 24 * 60 * 60_000);
+  assert.equal(config.maintenance.resourceRetentionMs, 30 * 24 * 60 * 60_000);
+  assert.equal(config.maintenance.auditRetentionMs, 180 * 24 * 60 * 60_000);
   assert.match(config.codex.workspace, /workspace$/);
 });
 

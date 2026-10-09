@@ -24,6 +24,7 @@ function config(resourceDir: string): BridgeConfig {
       visitRecordAllGroups: false,
       allowedSenderIds: [],
       requireMention: true,
+      opsAlertCooldownMs: 300_000,
     },
     meegleIdentity: {
       enabled: false,
@@ -37,6 +38,9 @@ function config(resourceDir: string): BridgeConfig {
       workspace: "/tmp/workspace",
       timeoutMs: 180_000,
       probeTimeoutMs: 30_000,
+      probeIntervalMs: 1_800_000,
+      probeFailureThreshold: 2,
+      maxConcurrentRuns: 2,
     },
     storage: {
       dataDir: join(resourceDir, ".."),
@@ -51,6 +55,11 @@ function config(resourceDir: string): BridgeConfig {
       maxResourceBytes: 25 * 1024 * 1024,
     },
     health: { host: "127.0.0.1", port: 0 },
+    maintenance: {
+      resourceRetentionMs: 30 * 24 * 60 * 60_000,
+      auditRetentionMs: 180 * 24 * 60 * 60_000,
+      intervalMs: 60 * 60_000,
+    },
   };
 }
 
