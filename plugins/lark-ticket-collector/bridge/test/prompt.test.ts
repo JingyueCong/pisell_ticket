@@ -67,6 +67,9 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /attachment_archive.*强制完成门禁/);
   assert.match(prompt, /expected_bindings=12/);
   assert.match(prompt, /draft\.action 必须为 update/);
+  assert.match(prompt, /不用 T2，改成\/建立 T3/);
+  assert.match(prompt, /保留已有客户、店铺、问题描述、附件、查重结果和已创建工单 ID/);
+  assert.match(prompt, /明确说“另外\/重新新建一张工单”才使用 open/);
   assert.match(prompt, /没有明确提供工单问题等级，默认填写三星/);
   assert.match(prompt, /不得再把星级列为缺失项/);
   assert.match(prompt, /新建任何类型工作项时/);

@@ -13,6 +13,7 @@ import {
 
 import type { BridgeConfig } from "./config.js";
 import { enforceAttachmentCompletion } from "./attachment-gate.js";
+import { enforceDraftRouteContinuation } from "./draft-continuation.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import { logger } from "./logger.js";
@@ -326,6 +327,11 @@ export class LarkTicketService {
         conversationKey: messageKey,
         chatId: message.chatId,
         senderId: message.senderId,
+        referenceMessageIds: [
+          message.threadId,
+          message.rootId,
+          message.replyToMessageId,
+        ].filter((messageId): messageId is string => Boolean(messageId)),
         allowParticipantFallback: !(
           message.threadId || message.rootId || message.replyToMessageId
         ),
@@ -338,7 +344,7 @@ export class LarkTicketService {
         !preliminaryRoute.authoritative &&
         /(?:内容维护|T3)/iu.test(activeDraft?.ticketType ?? "");
       const producerRotationKey = explicitContentMaintenance
-        ? messageKey
+        ? activeDraft?.conversationKey ?? messageKey
         : continuingContentMaintenance
           ? activeDraft?.conversationKey
           : undefined;
@@ -378,11 +384,23 @@ export class LarkTicketService {
         result: rawResult,
         hasReadableResources,
       });
+      const routeContinuation = enforceDraftRouteContinuation({
+        messageText: message.content,
+        ...(activeDraft ? { activeDraft } : {}),
+        draft: attachmentGate.draft,
+      });
       const result = {
         ...rawResult,
         text: attachmentGate.text,
-        draft: attachmentGate.draft,
+        draft: routeContinuation.draft,
       };
+      if (routeContinuation.continued) {
+        logger.info("draft.route_correction_continued", {
+          messageId: message.messageId,
+          draftId: activeDraft?.id,
+          conversationKey: activeDraft?.conversationKey,
+        });
+      }
       if (attachmentGate.blocked) {
         logger.warn("attachment.completion_blocked", {
           messageId: message.messageId,

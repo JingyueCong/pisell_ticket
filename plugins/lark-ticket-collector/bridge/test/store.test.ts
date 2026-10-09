@@ -148,6 +148,22 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
     });
     assert.equal(foundByParticipant?.id, opened.id);
 
+    store.addConversationMessage({
+      conversationKey,
+      role: "user",
+      content: "创建客服工单并关联 T2",
+      sourceMessageId: "om_followup_anchor",
+      createdAt: 1_040,
+    });
+    const foundByReplyReference = store.activeDraft({
+      conversationKey: "oc_1:ou_1:scope:om_nested_reply",
+      chatId: "oc_1",
+      senderId: "ou_1",
+      referenceMessageIds: ["om_followup_anchor"],
+      now: 1_050,
+    });
+    assert.equal(foundByReplyReference?.id, opened.id);
+
     assert.equal(
       store.activeDraft({
         conversationKey: "oc_1:ou_1:scope:threaded-reply",
@@ -263,6 +279,13 @@ test("store does not guess between concurrent drafts for the same participant", 
         ttlMs: 1_000,
         now: messageId === "om_t2" ? 1_000 : 1_100,
       });
+      store.addConversationMessage({
+        conversationKey: `oc_1:ou_1:scope:${messageId}`,
+        role: "user",
+        content: summary,
+        sourceMessageId: `${messageId}_followup`,
+        createdAt: messageId === "om_t2" ? 1_000 : 1_100,
+      });
     }
 
     assert.equal(
@@ -274,6 +297,18 @@ test("store does not guess between concurrent drafts for the same participant", 
         now: 1_200,
       }),
       undefined,
+    );
+
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_1:scope:nested-reply",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        referenceMessageIds: ["om_t2_followup"],
+        now: 1_200,
+      })?.summary,
+      "T2 积分卡问题",
+      "an explicit reply reference must select the intended draft even when another draft is open",
     );
 
     assert.equal(

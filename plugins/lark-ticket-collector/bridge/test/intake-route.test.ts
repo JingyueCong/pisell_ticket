@@ -8,6 +8,7 @@ test("T3 and content-maintenance creation aliases lock a customer bundle", () =>
     "创建T3工单 需要确认人Annie",
     "给我创建内容维护工单",
     "创建客服工单，并配套创建内容维护工单",
+    "不用T2工单，建立T3内容工单即可",
   ]) {
     const route = deriveIntakeRoutePolicy(input);
     assert.equal(route.mode, "customer_bundle", input);

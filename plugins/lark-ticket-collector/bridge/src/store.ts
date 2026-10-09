@@ -362,6 +362,7 @@ export class BridgeStore {
     conversationKey: string;
     chatId: string;
     senderId: string;
+    referenceMessageIds?: string[];
     allowParticipantFallback?: boolean;
     now?: number;
   }): DraftSnapshot | undefined {
@@ -380,6 +381,36 @@ export class BridgeStore {
       `)
       .get(input.conversationKey, input.chatId, input.senderId) as DraftRow | undefined;
     if (exact) return draftSnapshot(exact);
+
+    const referenceMessageIds = [
+      ...new Set(
+        (input.referenceMessageIds ?? [])
+          .map((messageId) => messageId.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (referenceMessageIds.length > 0) {
+      const placeholders = referenceMessageIds.map(() => "?").join(", ");
+      const referenced = this.db
+        .prepare(`
+          SELECT DISTINCT
+                 draft.id, draft.conversation_key, draft.chat_id, draft.sender_id,
+                 draft.ticket_type, draft.summary, draft.missing_fields_json,
+                 draft.work_item_ids_json, draft.resources_json, draft.updated_at,
+                 draft.expires_at
+          FROM conversation_messages AS message
+          JOIN ticket_drafts AS draft
+            ON draft.conversation_key = message.conversation_key
+          WHERE message.source_message_id IN (${placeholders})
+            AND draft.chat_id = ?
+            AND draft.sender_id = ?
+            AND draft.status = 'open'
+          ORDER BY draft.updated_at DESC
+          LIMIT 2
+        `)
+        .all(...referenceMessageIds, input.chatId, input.senderId) as DraftRow[];
+      if (referenced.length === 1) return draftSnapshot(referenced[0]!);
+    }
 
     // A threaded/reply message must never attach to a different draft. The
     // caller only enables participant fallback for an unscoped message, where
