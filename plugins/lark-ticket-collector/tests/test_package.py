@@ -267,7 +267,13 @@ class PackageContractTests(unittest.TestCase):
                 "match_mode": "contains",
             },
         )
-        self.assertTrue(followup["no_default"])
+        self.assertEqual(
+            followup["default_when_missing"],
+            {
+                "strategy": "message_create_date",
+                "timezone": "Australia/Melbourne",
+            },
+        )
 
     def test_customer_service_defaults_to_three_stars(self) -> None:
         customer_service = read_json("workspace/configuration/work-item-routing.json")["types"]["customer_service"]
@@ -543,11 +549,41 @@ class PackageContractTests(unittest.TestCase):
                 "unique_customer_crm",
                 "card_machine_points",
                 "monthly_fee_choice",
-                "estimated_ready_date",
                 "card_machine_quantity",
             },
         )
+        estimated_ready = next(
+            field
+            for field in card["field_mapping"]
+            if field["target_field_key"] == "field_73f715"
+        )
+        self.assertEqual(
+            estimated_ready["default_when_source_missing"],
+            {
+                "strategy": "message_create_date",
+                "timezone": "Australia/Melbourne",
+            },
+        )
         self.assertTrue(card["inherits_shared_paired_creation_gate"])
+
+    def test_all_new_work_item_schedule_fields_default_to_message_business_day(self) -> None:
+        routing = read_json("workspace/configuration/work-item-routing.json")
+        policy = routing["schedule_default_policy"]
+        self.assertEqual(policy["scope"], "new_work_items_only")
+        self.assertEqual(
+            policy["precedence"],
+            ["explicit_employee_value", "verified_copy_source", "message_business_day"],
+        )
+        self.assertEqual(policy["date_timezone"], "Australia/Melbourne")
+        self.assertEqual(policy["datetime_source"], "message_create_time")
+        self.assertTrue(policy["exclude_historical_fact_dates"])
+        self.assertTrue(policy["never_update_historical_work_items_implicitly"])
+
+        readiness = read_json("workspace/configuration/workflow-readiness.json")
+        self.assertEqual(
+            readiness["generic_policy"]["value_policy"]["date_or_schedule"],
+            "explicit_then_verified_copy_then_default_to_message_business_day",
+        )
 
     def test_customer_card_machine_catalog_keeps_verified_reverse_relation(self) -> None:
         catalog = read_json("workspace/configuration/work-item-catalog.json")

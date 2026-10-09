@@ -59,10 +59,12 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /客服外向关联已回读验证/);
   assert.match(prompt, /没有明确提供工单问题等级，默认填写三星/);
   assert.match(prompt, /不得再把星级列为缺失项/);
-  assert.match(prompt, /新建内容维护工单时，“预计完成时间”/);
-  assert.match(prompt, /员工明确提供的日期 > 客服主单已有预计完成时间 > trusted_business_date/);
+  assert.match(prompt, /新建任何类型工作项时/);
+  assert.match(prompt, /完成、交付、准备、截止、跟进、排期或计划类日期/);
+  assert.match(prompt, /员工明确提供的值 > 已核实来源工单可复制的值 > 默认当天/);
   assert.match(prompt, /trusted_business_date_australia_melbourne: 1970-01-01/);
-  assert.match(prompt, /不得把预计完成时间列为缺失项或向员工补问/);
+  assert.match(prompt, /不得把这些计划类时间列为缺失项或向员工补问/);
+  assert.match(prompt, /不得把合同签署日、付款日等历史事实日期改成当天/);
   assert.match(prompt, /商家来源时，默认主单必须是客服工单/);
   assert.match(prompt, /不得索取或写入“内部发现人”/);
   assert.match(prompt, /包含 T1、T2、T3 客户代运营、T5 功能建议\/改进、客户刷卡机或风控处理/);

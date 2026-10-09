@@ -1,7 +1,16 @@
 {
   "snapshot_date": "2026-10-02",
-  "policy_updated_at": "2026-10-03",
+  "policy_updated_at": "2026-10-09",
   "refresh_before_write": true,
+  "schedule_default_policy": {
+    "scope": "new_work_items_only",
+    "matching_field_semantics": ["完成", "交付", "准备", "截止", "跟进", "排期", "计划"],
+    "precedence": ["explicit_employee_value", "verified_copy_source", "message_business_day"],
+    "date_timezone": "Australia/Melbourne",
+    "datetime_source": "message_create_time",
+    "exclude_historical_fact_dates": true,
+    "never_update_historical_work_items_implicitly": true
+  },
   "project": {
     "host": "project.feishu.cn",
     "simple_name": "v2qint",
@@ -156,7 +165,10 @@
             "match_mode": "contains"
           },
           "source": "ui-condition-confirmed-2026-10-03-and-create-api-ErrFieldRequired-2026-09-28",
-          "no_default": true
+          "default_when_missing": {
+            "strategy": "message_create_date",
+            "timezone": "Australia/Melbourne"
+          }
         }
       ],
       "source_field": "field_20a3c6",
@@ -534,7 +546,7 @@
               {"target_field_key": "field_928eb4", "target_field_name": "关联客服工单", "source": "created_customer_service_id"},
               {"target_field_key": "field_9ef04c", "target_field_name": "刷卡机点数", "source": "explicit_card_machine_points"},
               {"target_field_key": "field_250a31", "target_field_name": "是否有月租/月费", "source": "explicit_monthly_fee_choice"},
-              {"target_field_key": "field_73f715", "target_field_name": "预估刷卡机准备完成时间", "source": "explicit_estimated_ready_date"},
+              {"target_field_key": "field_73f715", "target_field_name": "预估刷卡机准备完成时间", "source": "explicit_estimated_ready_date", "default_when_source_missing": {"strategy": "message_create_date", "timezone": "Australia/Melbourne"}},
               {"target_field_key": "field_a9ddae", "target_field_name": "刷卡机数量", "source": "explicit_card_machine_quantity"},
               {"target_field_key": "field_490c5f", "target_field_name": "申请资料附件", "source": "card_machine_application_bundle_attachments"}
             ],
@@ -542,14 +554,12 @@
               "unique_customer_crm",
               "card_machine_points",
               "monthly_fee_choice",
-              "estimated_ready_date",
               "card_machine_quantity"
             ],
             "inherits_shared_paired_creation_gate": true,
             "forbidden_inference": [
               "missing_card_machine_points",
               "missing_monthly_fee_choice",
-              "missing_estimated_ready_date",
               "missing_card_machine_quantity"
             ],
             "dedupe": {
