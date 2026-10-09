@@ -63,8 +63,9 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /完成、交付、准备、截止、跟进、排期或计划类日期/);
   assert.match(prompt, /员工明确提供的值 > 已核实来源工单可复制的值 > 默认当天/);
   assert.match(prompt, /trusted_business_date_australia_melbourne: 1970-01-01/);
-  assert.match(prompt, /不得把这些计划类时间列为缺失项或向员工补问/);
-  assert.match(prompt, /不得把合同签署日、付款日等历史事实日期改成当天/);
+  assert.match(prompt, /只表达日历日期，不默认具体时分/);
+  assert.match(prompt, /提供日期即视为完整，不得继续追问小时和分钟/);
+  assert.match(prompt, /按在线字段\/项目时区把所选日历日期序列化/);
   assert.match(prompt, /商家来源时，默认主单必须是客服工单/);
   assert.match(prompt, /不得索取或写入“内部发现人”/);
   assert.match(prompt, /包含 T1、T2、T3 客户代运营、T5 功能建议\/改进、客户刷卡机或风控处理/);

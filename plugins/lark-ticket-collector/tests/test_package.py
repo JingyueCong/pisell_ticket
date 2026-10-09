@@ -575,15 +575,30 @@ class PackageContractTests(unittest.TestCase):
             ["explicit_employee_value", "verified_copy_source", "message_business_day"],
         )
         self.assertEqual(policy["date_timezone"], "Australia/Melbourne")
-        self.assertEqual(policy["datetime_source"], "message_create_time")
+        self.assertEqual(policy["default_precision"], "date")
+        self.assertEqual(policy["manual_input_precision_required"], "date")
+        self.assertTrue(policy["preserve_explicit_time_when_provided"])
+        self.assertEqual(
+            policy["serialization"],
+            "preserve_calendar_date_using_live_field_and_project_timezone",
+        )
         self.assertTrue(policy["exclude_historical_fact_dates"])
         self.assertTrue(policy["never_update_historical_work_items_implicitly"])
 
         readiness = read_json("workspace/configuration/workflow-readiness.json")
         self.assertEqual(
             readiness["generic_policy"]["value_policy"]["date_or_schedule"],
-            "explicit_then_verified_copy_then_default_to_message_business_day",
+            "date_precision_explicit_then_verified_copy_then_default_to_message_business_day",
         )
+
+        blocking = routing["types"]["customer_service"]["paired_blocking_issue_policy"]
+        defaults = {
+            field["target_field_key"]: field
+            for field in blocking["authorized_defaults"]
+        }
+        self.assertEqual(defaults["field_22701f"]["value_source"], "single_submit_timestamp")
+        self.assertEqual(defaults["field_c1977f"]["value_source"], "message_business_date")
+        self.assertEqual(defaults["field_c1977f"]["precision"], "date")
 
     def test_customer_card_machine_catalog_keeps_verified_reverse_relation(self) -> None:
         catalog = read_json("workspace/configuration/work-item-catalog.json")

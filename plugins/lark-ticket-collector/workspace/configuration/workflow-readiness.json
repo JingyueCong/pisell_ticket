@@ -48,7 +48,7 @@
       "enum": "match_live_option_or_ask",
       "bool": "ask_without_default",
       "text": "ask_without_placeholder",
-      "date_or_schedule": "explicit_then_verified_copy_then_default_to_message_business_day",
+      "date_or_schedule": "date_precision_explicit_then_verified_copy_then_default_to_message_business_day",
       "attachments": "bind_only_user_confirmed_resources"
     },
     "success_claim": "只有 create_verified 且当前节点 unfinished 列表为空时，才称为已完整创建或可继续处理。",

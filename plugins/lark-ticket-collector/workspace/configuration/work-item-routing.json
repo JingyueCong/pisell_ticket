@@ -7,7 +7,10 @@
     "matching_field_semantics": ["完成", "交付", "准备", "截止", "跟进", "排期", "计划"],
     "precedence": ["explicit_employee_value", "verified_copy_source", "message_business_day"],
     "date_timezone": "Australia/Melbourne",
-    "datetime_source": "message_create_time",
+    "default_precision": "date",
+    "manual_input_precision_required": "date",
+    "preserve_explicit_time_when_provided": true,
+    "serialization": "preserve_calendar_date_using_live_field_and_project_timezone",
     "exclude_historical_fact_dates": true,
     "never_update_historical_work_items_implicitly": true
   },
@@ -302,7 +305,7 @@
         "authorized_defaults": [
           {"target_field_key": "field_17627b", "target_field_name": "阻断性问题类型", "value_name": "技术缺陷（T-BUG）", "unless_explicit_classification": true},
           {"target_field_key": "field_22701f", "target_field_name": "发生时间点（尽可能精确）", "value_source": "single_submit_timestamp"},
-          {"target_field_key": "field_c1977f", "target_field_name": "预期修复截止时间", "value_source": "single_submit_timestamp"}
+          {"target_field_key": "field_c1977f", "target_field_name": "预期修复截止时间", "value_source": "message_business_date", "timezone": "Australia/Melbourne", "precision": "date"}
         ],
         "conditional_text_placeholders": {
           "use_only_when_current_create_protocol_requires_non_empty": true,
