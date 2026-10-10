@@ -69,6 +69,9 @@ test("loadConfig combines producer env id with runtime parsing rules", () => {
           source_chat_id_env: "CONTENT_PRODUCER_SOURCE_CHAT_ID",
           extract_pattern: "制作\\s*[:：]\\s*(.+?)(?=\\s*确认\\s*[:：]|$)",
           name_split_pattern: "[/／、,，&＆]+",
+          confirmer_extract_pattern: "确认\\s*[:：]\\s*(.+?)$",
+          confirmer_name_split_pattern: "[/／、,，&＆]+",
+          target_confirmer_role_name: "确认人",
         },
       },
     }),
@@ -86,6 +89,9 @@ test("loadConfig combines producer env id with runtime parsing rules", () => {
       chatId: "oc_producer",
       extractPattern: "制作\\s*[:：]\\s*(.+?)(?=\\s*确认\\s*[:：]|$)",
       nameSplitPattern: "[/／、,，&＆]+",
+      confirmerExtractPattern: "确认\\s*[:：]\\s*(.+?)$",
+      confirmerNameSplitPattern: "[/／、,，&＆]+",
+      confirmerRoleName: "确认人",
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });

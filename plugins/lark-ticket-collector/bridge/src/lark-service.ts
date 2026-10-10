@@ -24,7 +24,7 @@ import {
   MeegleIdentityManager,
 } from "./meegle-identity.js";
 import { MeegleAttachmentArchiver } from "./meegle-attachment-archiver.js";
-import { parseProducerNames } from "./producer-source.js";
+import { parseConfirmerNames, parseProducerNames } from "./producer-source.js";
 import { conversationKey } from "./prompt.js";
 import { BridgeStore } from "./store.js";
 import type {
@@ -828,6 +828,8 @@ export class LarkTicketService {
     const base = {
       chatId: source.chatId,
       producerNames: [] as string[],
+      confirmerNames: [] as string[],
+      confirmerRoleName: source.confirmerRoleName,
       fetchedAt: Date.now(),
     };
     try {
@@ -837,6 +839,7 @@ export class LarkTicketService {
         return { ...base, error: "configured producer source chat has no readable name" };
       }
       const producerRoster = parseProducerNames(chatName, source);
+      const confirmerNames = parseConfirmerNames(chatName, source);
       const selectedProducer = rotationConversationKey
         ? this.store.assignNextProducer({
             sourceChatId: source.chatId,
@@ -849,6 +852,7 @@ export class LarkTicketService {
         chatName,
         producerNames: selectedProducer ? [selectedProducer] : producerRoster,
         producerRoster,
+        confirmerNames,
         selectionMode: selectedProducer ? "round_robin_single" : "all",
       };
     } catch (error) {

@@ -12,7 +12,10 @@
       "lark_cli_profile_env": "LARK_CLI_PROFILE",
       "extract_pattern": "制作\\s*[:：]\\s*(.+?)(?=\\s*确认\\s*[:：]|$)",
       "name_split_pattern": "[/／、,，&＆]+",
+      "confirmer_extract_pattern": "确认\\s*[:：]\\s*(.+?)$",
+      "confirmer_name_split_pattern": "[/／、,，&＆]+",
       "target_role_name": "制作人&交付人",
+      "target_confirmer_role_name": "确认人",
       "observed_role_key": "role_c17278",
       "refresh_chat_name_before_each_create": true,
       "refresh_role_metadata_before_write": true,
@@ -20,6 +23,17 @@
       "applies_to_new_items_only": true,
       "failure_policy": "ask_user_without_create",
       "conflict_policy": "ask_user_without_create"
+    },
+    "confirmation_policy": {
+      "field_key": "field_5bccdd",
+      "field_name": "是否需要确认人确认",
+      "explicit_employee_value_precedence": true,
+      "complex_indicators": ["复杂任务", "重点商家", "KA", "VIP", "Google预约", "谷歌预约", "游乐场", "复杂餐饮"],
+      "include_equivalent_high_complexity_multi_step_evidence": true,
+      "do_not_infer_from_length_or_attachment_count_alone": true,
+      "simple_default": false,
+      "confirmer_source": "producer_role_source.confirmer_extract_pattern",
+      "failure_policy_when_confirmation_required": "ask_user_without_create"
     }
   },
   "handoff": {

@@ -73,6 +73,15 @@ const runtimeSchema = z
           source_chat_id_env: z.literal("CONTENT_PRODUCER_SOURCE_CHAT_ID"),
           extract_pattern: z.string().min(1),
           name_split_pattern: z.string().min(1),
+          confirmer_extract_pattern: z
+            .string()
+            .min(1)
+            .default("确认\\s*[:：]\\s*(.+?)$"),
+          confirmer_name_split_pattern: z
+            .string()
+            .min(1)
+            .default("[/／、,，&＆]+"),
+          target_confirmer_role_name: z.string().min(1).default("确认人"),
         }),
       })
       .optional(),
@@ -83,6 +92,9 @@ export interface ContentMaintenanceProducerSourceConfig {
   chatId: string;
   extractPattern: string;
   nameSplitPattern: string;
+  confirmerExtractPattern: string;
+  confirmerNameSplitPattern: string;
+  confirmerRoleName: string;
 }
 
 function loadContentMaintenanceProducerSource(
@@ -107,6 +119,8 @@ function loadContentMaintenanceProducerSource(
   try {
     new RegExp(source.extract_pattern);
     new RegExp(source.name_split_pattern);
+    new RegExp(source.confirmer_extract_pattern);
+    new RegExp(source.confirmer_name_split_pattern);
   } catch (error) {
     throw new Error(
       `Invalid content-maintenance producer pattern: ${
@@ -118,6 +132,9 @@ function loadContentMaintenanceProducerSource(
     chatId,
     extractPattern: source.extract_pattern,
     nameSplitPattern: source.name_split_pattern,
+    confirmerExtractPattern: source.confirmer_extract_pattern,
+    confirmerNameSplitPattern: source.confirmer_name_split_pattern,
+    confirmerRoleName: source.target_confirmer_role_name,
   };
 }
 

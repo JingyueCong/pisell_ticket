@@ -173,7 +173,7 @@
       "create_fields": [
         {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
         {"field_key": "template", "field_name": "内容维护类型", "field_type": "work_item_template"},
-        {"field_key": "field_5bccdd", "field_name": "是否需要确认人确认", "field_type": "bool"}
+        {"field_key": "field_5bccdd", "field_name": "是否需要确认人确认", "field_type": "bool", "value_policy": "员工明确值优先；否则复杂任务、重点商家、KA、VIP、Google/谷歌预约、游乐场、复杂餐饮或等价高复杂度多环节任务为 true，其他简单任务为 false"}
       ],
       "create_roles": [
         {
@@ -181,6 +181,11 @@
           "observed_role_key": "role_c17278",
           "source": "runtime.json#content_maintenance.producer_role_source",
           "value_policy": "每次开启新草稿前读取配置群当前群名，按群名姓名顺序持久化轮班；每张工单仅写入一位制作人，同一草稿保持绑定，名单变化后从第一位重置。角色和人员在线刷新，失败或冲突时停止创建并询问。"
+        },
+        {
+          "role_name": "确认人",
+          "source": "runtime.json#content_maintenance.producer_role_source.confirmer_extract_pattern",
+          "value_policy": "员工明确选择需要确认，或文字/图片/视频命中复杂任务、重点商家、KA、VIP、Google/谷歌预约、游乐场、复杂餐饮或等价高复杂度多环节任务时，从同一群名确认段解析；不轮班。角色和人员在线刷新，缺失或冲突时停止创建。简单任务不写此角色。"
         }
       ],
       "templates": [

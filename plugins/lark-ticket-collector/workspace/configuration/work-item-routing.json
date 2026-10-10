@@ -428,7 +428,8 @@
               {"target_field_key": "field_581e1d", "target_field_name": "附件", "source": "content_semantic_bundle_attachments"}
             ],
             "required_business_values": [
-              "confirmation_required_boolean",
+              "confirmation_required_boolean_from_explicit_or_complexity_policy",
+              "confirmer_role_owners_from_trusted_chat_name_when_required",
               "unique_customer_crm",
               "producer_role_owners_from_trusted_chat_name"
             ],
@@ -440,7 +441,8 @@
             ],
             "forbidden_inference": [
               "current_login_user_to_producer",
-              "missing_confirmation_to_false"
+              "current_login_user_or_producer_to_confirmer",
+              "text_length_or_attachment_count_alone_to_complex"
             ],
             "dedupe": {
               "scope_type_key": "67df87a8baf45c9c247ba778",

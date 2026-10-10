@@ -28,6 +28,8 @@ test("prompt treats attachment content as untrusted evidence", () => {
         chatName: "内部任务沟通 制作：Annie/Jane 确认:Kiddy",
         producerNames: ["Annie"],
         producerRoster: ["Annie", "Jane"],
+        confirmerNames: ["Kiddy"],
+        confirmerRoleName: "确认人",
         selectionMode: "round_robin_single",
         fetchedAt: 2,
       },
@@ -102,10 +104,17 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /可信内容维护制作人来源/);
   assert.match(prompt, /producer_names: Annie/);
   assert.match(prompt, /producer_roster: Annie \/ Jane/);
+  assert.match(prompt, /confirmer_names: Kiddy/);
+  assert.match(prompt, /confirmer_role_name: 确认人/);
   assert.match(prompt, /selection_mode: round_robin_single/);
   assert.match(prompt, /必须只解析并写入这一人到“制作人&交付人”/);
   assert.match(prompt, /不得同时写入 producer_roster 中的其他人/);
   assert.match(prompt, /不得再次向员工索取制作人/);
+  assert.match(prompt, /自动填写“是否需要确认人确认”/);
+  assert.match(prompt, /复杂任务.*重点商家.*KA.*VIP.*Google\/谷歌预约.*游乐场.*复杂餐饮/);
+  assert.match(prompt, /其余普通、单一、简单任务填写“否”/);
+  assert.match(prompt, /只能使用可信元数据 confirmer_names/);
+  assert.match(prompt, /当布尔值为“否”时不得写确认人角色/);
   assert.match(prompt, /source_message_id: om_1/);
   assert.match(prompt, /evidence\.png/);
   assert.match(prompt, /创建一个风控工单/);
