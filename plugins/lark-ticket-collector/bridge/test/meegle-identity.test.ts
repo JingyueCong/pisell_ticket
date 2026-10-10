@@ -146,6 +146,182 @@ test("customer intake node owner is force-updated and read back with the verifie
   }
 });
 
+test("customer intake owner verification ignores unrelated nested owner fields", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updated = false;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("get-node")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            nodes: [
+              {
+                name: "创建工单",
+                state_key: "started",
+                metadata: { owner: { user_key: "template-owner" } },
+                form_items: [
+                  {
+                    field_key: "owner",
+                    field_value: [{ user_key: updated ? "meegle_alice" : "echo" }],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update-node")) updated = true;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureCustomerIntakeNodeOwner({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7130051159",
+      });
+    assert.deepEqual(result, { nodeId: "started", ownerUserKey: "meegle_alice" });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("customer intake owner verification skips mutation when the owner is already correct", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updateCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("update-node")) updateCalls += 1;
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        data: {
+          nodes: [
+            {
+              name: "创建工单",
+              state_key: "started",
+              form_items: [
+                { field_key: "owner", field_value: [{ user_key: "meegle_alice" }] },
+              ],
+            },
+          ],
+        },
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureCustomerIntakeNodeOwner({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7130051159",
+      });
+    assert.deepEqual(result, { nodeId: "started", ownerUserKey: "meegle_alice" });
+    assert.equal(updateCalls, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("customer intake owner update surfaces API errors returned with exit code zero", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("get-node")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            nodes: [
+              {
+                name: "创建工单",
+                state_key: "started",
+                form_items: [{ field_key: "owner", field_value: [{ user_key: "echo" }] }],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        data: null,
+        error: { code: "PERMISSION_DENIED", message: "node owner is not editable" },
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    await assert.rejects(
+      new MeegleIdentityManager(config(directory), runner)
+        .ensureCustomerIntakeNodeOwner({
+          identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+          workItemId: "7130051159",
+        }),
+      /PERMISSION_DENIED: node owner is not editable/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("customer intake owner readback retries brief API propagation lag", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updated = false;
+  let readsAfterUpdate = 0;
+  let pauses = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("get-node")) {
+      if (updated) readsAfterUpdate += 1;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            nodes: [
+              {
+                name: "创建工单",
+                state_key: "started",
+                form_items: [
+                  {
+                    field_key: "owner",
+                    field_value: [
+                      { user_key: updated && readsAfterUpdate >= 3 ? "meegle_alice" : "echo" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update-node")) updated = true;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(
+      config(directory),
+      runner,
+      async () => { pauses += 1; },
+    ).ensureCustomerIntakeNodeOwner({
+      identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+      workItemId: "7130051159",
+    });
+    assert.deepEqual(result, { nodeId: "started", ownerUserKey: "meegle_alice" });
+    assert.equal(readsAfterUpdate, 3);
+    assert.equal(pauses, 2);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("per-user authorization binds a verified sender and reuses only that profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   let authenticated = false;

@@ -84,6 +84,26 @@ function parseJson(text: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+function responseError(result: ProcessResult): string | undefined {
+  if (result.exitCode !== 0) {
+    const stderr = result.stderr.trim();
+    return stderr ? `exit=${result.exitCode}: ${stderr}` : `exit=${result.exitCode}`;
+  }
+  try {
+    const payload = parseJson(result.stdout);
+    if (!payload.error || typeof payload.error !== "object" || Array.isArray(payload.error)) {
+      return undefined;
+    }
+    const error = payload.error as Record<string, unknown>;
+    const code = stringValue(error.code);
+    const message = stringValue(error.message);
+    if (!code && !message) return "unknown API error";
+    return [code, message].filter(Boolean).join(": ");
+  } catch {
+    return undefined;
+  }
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -144,18 +164,6 @@ function workflowNodeOwnerKeys(node: Record<string, unknown>): Set<string> {
   const objects: Array<Record<string, unknown>> = [];
   collectObjects(node, objects);
   for (const object of objects) {
-    for (const key of [
-      "owner",
-      "owners",
-      "node_owners",
-      "nodeOwners",
-      "owner_list",
-      "ownerList",
-      "user_key_list",
-      "userKeyList",
-    ]) {
-      if (Object.hasOwn(object, key)) collectOwnerKeys(object[key], result);
-    }
     const fieldKey = stringValue(object.field_key) ?? stringValue(object.fieldKey);
     if (fieldKey === "owner") {
       collectOwnerKeys(
@@ -163,6 +171,19 @@ function workflowNodeOwnerKeys(node: Record<string, unknown>): Set<string> {
         result,
       );
     }
+  }
+  if (result.size) return result;
+  for (const key of [
+    "owner",
+    "owners",
+    "node_owners",
+    "nodeOwners",
+    "owner_list",
+    "ownerList",
+    "user_key_list",
+    "userKeyList",
+  ]) {
+    if (Object.hasOwn(node, key)) collectOwnerKeys(node[key], result);
   }
   return result;
 }
@@ -205,6 +226,8 @@ export class MeegleIdentityManager {
   constructor(
     private readonly config: BridgeConfig,
     private readonly runner: ProcessRunner = runProcess,
+    private readonly pause: (durationMs: number) => Promise<void> = (durationMs) =>
+      new Promise((resolve) => setTimeout(resolve, durationMs)),
   ) {
     this.directory = join(config.storage.dataDir, "meegle-identities");
   }
@@ -346,6 +369,10 @@ export class MeegleIdentityManager {
     if (!node) throw new Error("Customer ticket intake node was not returned");
     const nodeId = workflowNodeId(node);
     if (!nodeId) throw new Error("Customer ticket intake node has no node id");
+    const currentOwners = workflowNodeOwnerKeys(node);
+    if (currentOwners.size === 1 && currentOwners.has(input.identity.userKey)) {
+      return { nodeId, ownerUserKey: input.identity.userKey };
+    }
 
     await this.meegle(
       input.identity.profile,
@@ -365,20 +392,29 @@ export class MeegleIdentityManager {
       true,
     );
 
-    const verified = await this.meegle(input.identity.profile, nodeQuery, true);
-    const verifiedNode = findWorkflowNode(
-      JSON.parse(verified.stdout) as unknown,
-      "创建工单",
-    );
-    const verifiedOwners = verifiedNode ? workflowNodeOwnerKeys(verifiedNode) : new Set<string>();
-    if (
-      !verifiedNode ||
-      verifiedOwners.size !== 1 ||
-      !verifiedOwners.has(input.identity.userKey)
-    ) {
-      throw new Error("Customer ticket intake node owner verification failed");
+    let verifiedOwners = new Set<string>();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (attempt > 0) await this.pause(500);
+      const verified = await this.meegle(input.identity.profile, nodeQuery, true);
+      const verifiedNode = findWorkflowNode(
+        JSON.parse(verified.stdout) as unknown,
+        "创建工单",
+      );
+      verifiedOwners = verifiedNode
+        ? workflowNodeOwnerKeys(verifiedNode)
+        : new Set<string>();
+      if (
+        verifiedNode &&
+        verifiedOwners.size === 1 &&
+        verifiedOwners.has(input.identity.userKey)
+      ) {
+        return { nodeId, ownerUserKey: input.identity.userKey };
+      }
     }
-    return { nodeId, ownerUserKey: input.identity.userKey };
+    throw new Error(
+      `Customer ticket intake node owner verification failed after 5 reads ` +
+        `(expected=${input.identity.userKey}, actual=${[...verifiedOwners].join(",") || "none"})`,
+    );
   }
 
   private profileFor(senderId: string): string {
@@ -500,8 +536,11 @@ export class MeegleIdentityManager {
       profile,
       ...args,
     ]);
-    if (requireSuccess && result.exitCode !== 0) {
-      throw new Error(`Meegle CLI failed while running ${args.slice(0, 2).join(" ")}`);
+    const failure = requireSuccess ? responseError(result) : undefined;
+    if (failure) {
+      throw new Error(
+        `Meegle CLI failed while running ${args.slice(0, 2).join(" ")}: ${failure}`,
+      );
     }
     return result;
   }
