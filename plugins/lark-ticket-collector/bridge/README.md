@@ -128,6 +128,7 @@ INTERNAL_TICKET_SENDER_NAME=Echo
 - `DRAFT_TTL_HOURS`：未完成结构化草稿的有效期，默认 168 小时（7 天）。过期草稿不会继续补填。
 - `HEALTH_PORT=0`：关闭健康检查端口；默认只监听 `127.0.0.1:8787/healthz`。
 - `INTERNAL_API_TOKEN` 与 `INTERNAL_TICKET_SENDER_ID`：同时配置后启用 `POST /internal/customer-service-tickets`，供同一台 Mac mini 上的智能客服在持久化转人工后调用。接口与健康检查共用 loopback 监听地址，不得把 `HEALTH_HOST` 改为公网地址。该入口强制 `customer_only`，只创建客服主单。发送者 ID 必须是本工单应用作用域内已验证并绑定 Meegle 身份的员工；`INTERNAL_TICKET_SENDER_NAME` 仅用于审计展示。
+- `INTERNAL_ATTACHMENT_ROOTS`：逗号分隔的智能客服媒体绝对目录。内部入口只接受这些目录中的普通文件，并校验声明大小和 SHA-256；验证后的图片/视频由现有附件归档器写入客服主单并回读。未配置时，含 evidence 的交接会安全失败，不会读取任意本机路径。
 
 不要提交 `.env`，不要把 App Secret 写进飞书消息或日志。建议通过主机密钥管理器或部署平台的 Secret 注入环境变量。
 

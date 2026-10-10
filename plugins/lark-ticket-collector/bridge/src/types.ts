@@ -191,6 +191,17 @@ export interface InternalCustomerTicketRequest {
     role: MessageRole;
     content: string;
   }>;
+  evidence: Array<{
+    attachmentId: string;
+    kind: "image" | "video";
+    fileName: string;
+    mediaType: string;
+    sizeBytes: number;
+    sha256: string;
+    storagePath: string;
+    analysisStatus: "ready" | "failed" | "unavailable";
+    analysisSummary?: string;
+  }>;
 }
 
 export interface InternalCustomerTicketResponse {

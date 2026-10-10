@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import type { BridgeConfig } from "../src/config.js";
 import { parseInternalCustomerTicketRequest } from "../src/internal-api.js";
-import { InternalTicketService } from "../src/internal-ticket-service.js";
+import {
+  InternalTicketService,
+  resolveInternalEvidenceResources,
+} from "../src/internal-ticket-service.js";
 import { BridgeStore } from "../src/store.js";
 import type { AgentBackend, AgentRequest, AgentResult } from "../src/types.js";
 
@@ -57,6 +61,7 @@ function config(directory: string): BridgeConfig {
       token: "a-secure-test-token-with-24-characters",
       submitterSenderId: "ou_ticket_service",
       submitterName: "Echo",
+      attachmentRoots: [directory],
     },
     maintenance: {
       resourceRetentionMs: 30 * 24 * 60 * 60_000,
@@ -147,4 +152,69 @@ test("internal request parser rejects undeclared routing overrides", () => {
       creation_scope: "customer_bundle",
     }),
   );
+});
+
+test("internal evidence is checksum-verified and passed to the customer-only agent", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-internal-evidence-"));
+  const evidencePath = join(directory, "checkout-error.png");
+  const bytes = Buffer.from("trusted customer screenshot");
+  writeFileSync(evidencePath, bytes, { mode: 0o600 });
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const request = parseInternalCustomerTicketRequest({
+    request_id: "om_support_evidence_1",
+    conversation_id: "support-session-1",
+    source_chat_id: "support-web:support-session-1",
+    source_message_id: "42",
+    merchant_name: "青禾便当",
+    content: "结账页面报错，请转人工",
+    context: [],
+    evidence: [
+      {
+        attachment_id: "11111111-1111-4111-8111-111111111111",
+        kind: "image",
+        file_name: "checkout-error.png",
+        media_type: "image/png",
+        size_bytes: bytes.length,
+        sha256,
+        storage_path: evidencePath,
+        analysis_status: "ready",
+        analysis_summary: "结账页面显示打印机连接失败。",
+      },
+    ],
+  });
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  const agent = new FakeAgent();
+  try {
+    const resources = await resolveInternalEvidenceResources(request, config(directory));
+    assert.deepEqual(resources, [
+      {
+        type: "image",
+        fileKey: "support-evidence:11111111-1111-4111-8111-111111111111",
+        fileName: "checkout-error.png",
+        localPath: realpathSync(evidencePath),
+        sha256,
+        size: bytes.length,
+      },
+    ]);
+
+    const service = new InternalTicketService(config(directory), store, agent);
+    const result = await service.process(request);
+    assert.equal(result.draftOpen, true);
+    assert.match(result.reply, /附件尚未全部写入/);
+    assert.deepEqual(agent.requests[0]!.envelope.resources, resources);
+    assert.match(agent.requests[0]!.envelope.content, /必须归档到客服工单附件字段/);
+    assert.match(agent.requests[0]!.envelope.content, /结账页面显示打印机连接失败/);
+
+    const tampered = {
+      ...request,
+      evidence: [{ ...request.evidence[0]!, sha256: "0".repeat(64) }],
+    };
+    await assert.rejects(
+      resolveInternalEvidenceResources(tampered, config(directory)),
+      /checksum mismatch/,
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

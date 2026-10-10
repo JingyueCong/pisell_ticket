@@ -14,6 +14,25 @@ const contextMessage = z
   })
   .strict();
 
+const evidenceItem = z
+  .object({
+    attachment_id: z.string().trim().min(1).max(300),
+    kind: z.enum(["image", "video"]),
+    file_name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .refine((value) => !value.includes("/") && !value.includes("\\")),
+    media_type: z.string().trim().min(1).max(200),
+    size_bytes: z.number().int().positive(),
+    sha256: z.string().trim().toLowerCase().regex(/^[0-9a-f]{64}$/),
+    storage_path: z.string().trim().min(1).max(4_096),
+    analysis_status: z.enum(["ready", "failed", "unavailable"]),
+    analysis_summary: z.string().trim().min(1).max(12_000).optional(),
+  })
+  .strict();
+
 const requestSchema = z
   .object({
     request_id: z.string().trim().min(1).max(300),
@@ -27,6 +46,7 @@ const requestSchema = z
     rating: z.string().trim().min(1).max(100).optional(),
     content: z.string().trim().min(1).max(12_000),
     context: z.array(contextMessage).max(20).default([]),
+    evidence: z.array(evidenceItem).max(30).default([]),
   })
   .strict();
 
@@ -46,6 +66,17 @@ export function parseInternalCustomerTicketRequest(
     ...(parsed.rating ? { rating: parsed.rating } : {}),
     content: parsed.content,
     context: parsed.context,
+    evidence: parsed.evidence.map((item) => ({
+      attachmentId: item.attachment_id,
+      kind: item.kind,
+      fileName: item.file_name,
+      mediaType: item.media_type,
+      sizeBytes: item.size_bytes,
+      sha256: item.sha256,
+      storagePath: item.storage_path,
+      analysisStatus: item.analysis_status,
+      ...(item.analysis_summary ? { analysisSummary: item.analysis_summary } : {}),
+    })),
   };
 }
 

@@ -58,6 +58,7 @@ const schema = z.object({
   INTERNAL_API_TOKEN: optionalString,
   INTERNAL_TICKET_SENDER_ID: optionalString,
   INTERNAL_TICKET_SENDER_NAME: optionalString,
+  INTERNAL_ATTACHMENT_ROOTS: z.string().default(""),
   MAX_REPLY_CHARS: positiveInt(12_000),
   MAX_HISTORY_MESSAGES: positiveInt(12),
   MAX_HISTORY_AGE_DAYS: positiveInt(30),
@@ -215,6 +216,7 @@ export interface BridgeConfig {
     token?: string;
     submitterSenderId?: string;
     submitterName?: string;
+    attachmentRoots?: string[];
   };
   maintenance: {
     resourceRetentionMs: number;
@@ -306,6 +308,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     },
     internalApi: {
       enabled: Boolean(parsed.INTERNAL_API_TOKEN && parsed.INTERNAL_TICKET_SENDER_ID),
+      attachmentRoots: list(parsed.INTERNAL_ATTACHMENT_ROOTS).map((path) =>
+        resolve(cwd, path),
+      ),
       ...(parsed.INTERNAL_API_TOKEN ? { token: parsed.INTERNAL_API_TOKEN } : {}),
       ...(parsed.INTERNAL_TICKET_SENDER_ID
         ? { submitterSenderId: parsed.INTERNAL_TICKET_SENDER_ID }

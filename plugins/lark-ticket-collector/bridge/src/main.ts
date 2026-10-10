@@ -65,7 +65,13 @@ async function main(): Promise<void> {
     visitRecordLoader,
   );
   const internalTicketService = config.internalApi.enabled
-    ? new InternalTicketService(config, store, agent, identityManager)
+    ? new InternalTicketService(
+        config,
+        store,
+        agent,
+        identityManager,
+        attachmentArchiver,
+      )
     : undefined;
   service.setAccepting(false);
   let healthStatus: { ready: boolean; reason?: string } = {
