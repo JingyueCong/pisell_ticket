@@ -208,5 +208,6 @@ export interface InternalCustomerTicketResponse {
   reply: string;
   draftOpen: boolean;
   workItemIds: string[];
+  ticketNumber: string;
   cached: boolean;
 }

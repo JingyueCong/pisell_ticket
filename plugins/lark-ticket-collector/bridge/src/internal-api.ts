@@ -153,6 +153,7 @@ export function createBridgeHttpHandler(input: {
           reply: result.reply,
           draft_open: result.draftOpen,
           work_item_ids: result.workItemIds,
+          ticket_number: result.ticketNumber,
           cached: result.cached,
         });
       } catch (error) {

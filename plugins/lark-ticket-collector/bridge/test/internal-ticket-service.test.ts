@@ -123,6 +123,7 @@ test("internal handoff forces customer-only routing and is idempotent", async ()
     assert.equal(first.cached, false);
     assert.equal(second.cached, true);
     assert.deepEqual(first.workItemIds, ["123"]);
+    assert.equal(first.ticketNumber, "123");
     assert.equal(agent.requests.length, 1);
     const envelope = agent.requests[0]!.envelope;
     assert.deepEqual(envelope.routePolicy, {
@@ -135,6 +136,32 @@ test("internal handoff forces customer-only routing and is idempotent", async ()
     assert.match(envelope.content, /Zendesk 工单系统/);
     assert.match(envelope.content, /内部跟进处理/);
     assert.match(envelope.content, /三星/);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("internal handoff cannot override the fixed internal follow-up issue type", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-internal-fixed-type-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  const agent = new FakeAgent();
+  const service = new InternalTicketService(config(directory), store, agent);
+  const request = parseInternalCustomerTicketRequest({
+    request_id: "om_support_fixed_type",
+    conversation_id: "fixed-type-conversation",
+    source_chat_id: "support-web:fixed-type-conversation",
+    source_message_id: "1",
+    merchant_name: "测试商户",
+    issue_type: "T1核心阻断性问题",
+    content: "请转人工",
+  });
+
+  try {
+    const result = await service.process(request);
+    assert.equal(result.ticketNumber, "123");
+    assert.match(agent.requests[0]!.envelope.content, /对应问题类型：内部跟进处理/);
+    assert.doesNotMatch(agent.requests[0]!.envelope.content, /T1核心阻断/);
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });

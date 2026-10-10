@@ -21,6 +21,8 @@ import type {
 } from "./types.js";
 import { customerIntakeOwnerTarget } from "./work-item-outcomes.js";
 
+const INTERNAL_FOLLOW_UP_ISSUE_TYPE = "内部跟进处理";
+
 function requestText(input: InternalCustomerTicketRequest): string {
   const context = input.context
     .slice(-12)
@@ -39,7 +41,7 @@ function requestText(input: InternalCustomerTicketRequest): string {
     input.merchantName ? `商户：${input.merchantName}` : undefined,
     input.senderName ? `问题提出人：${input.senderName}` : undefined,
     input.problemSource ? `问题来源：${input.problemSource}` : undefined,
-    input.issueType ? `对应问题类型：${input.issueType}` : undefined,
+    `对应问题类型：${INTERNAL_FOLLOW_UP_ISSUE_TYPE}（固定值，不得改为其他类型）`,
     input.rating ? `工单问题等级：${input.rating}` : undefined,
     `原始问题：${input.content}`,
     context ? `智能客服最近对话：\n${context}` : undefined,
@@ -137,10 +139,27 @@ export class InternalTicketService {
     const existing = this.store.messageResult(messageId);
     if (existing?.status === "completed" && existing.responseText) {
       const activeDraft = this.activeDraft(chatId, submitterSenderId, input.conversationId);
+      const completedOperation = [...this.store.messageOperations(messageId)]
+        .reverse()
+        .find(
+          (operation) =>
+            operation.step === "internal_agent_execution" &&
+            operation.status === "succeeded",
+        );
+      const recordedIds = completedOperation?.detail.customerWorkItemIds;
+      const workItemIds = Array.isArray(recordedIds)
+        ? recordedIds.filter(
+            (value): value is string => typeof value === "string" && Boolean(value.trim()),
+          )
+        : activeDraft?.workItemIds ?? [];
+      if (workItemIds.length !== 1) {
+        throw new Error("completed customer-service intake has no unique ticket number");
+      }
       return {
         reply: existing.responseText,
         draftOpen: Boolean(activeDraft),
-        workItemIds: activeDraft?.workItemIds ?? [],
+        workItemIds,
+        ticketNumber: workItemIds[0]!,
         cached: true,
       };
     }
@@ -217,6 +236,22 @@ export class InternalTicketService {
       if (nonCustomerOutcome) {
         throw new Error(
           `customer-only intake returned forbidden ${nonCustomerOutcome.role} outcome`,
+        );
+      }
+      const customerWorkItemIds = [
+        ...new Set(
+          result.workItemOutcomes
+            .filter(
+              (outcome) =>
+                outcome.role === "customer" && outcome.disposition !== "queried",
+            )
+            .map((outcome) => outcome.workItemId.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (customerWorkItemIds.length !== 1) {
+        throw new Error(
+          `customer-only intake must return exactly one created customer ticket; got ${customerWorkItemIds.length}`,
         );
       }
 
@@ -346,6 +381,7 @@ export class InternalTicketService {
         detail: {
           draftAction: result.draft.action,
           workItemIds: result.draft.workItemIds,
+          customerWorkItemIds,
           attachmentStatus: result.attachmentArchive.status,
           expectedBindings: result.attachmentArchive.expectedBindings,
           verifiedBindings: result.attachmentArchive.verifiedBindings,
@@ -354,7 +390,8 @@ export class InternalTicketService {
       return {
         reply,
         draftOpen: Boolean(storedDraft),
-        workItemIds: result.draft.workItemIds,
+        workItemIds: customerWorkItemIds,
+        ticketNumber: customerWorkItemIds[0]!,
         cached: false,
       };
     } catch (error) {
