@@ -47,7 +47,7 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.codex.probeTimeoutMs, 30_000);
   assert.equal(config.codex.probeIntervalMs, 30 * 60_000);
   assert.equal(config.codex.probeFailureThreshold, 2);
-  assert.equal(config.codex.maxConcurrentRuns, 2);
+  assert.equal(config.codex.maxConcurrentRuns, 4);
   assert.equal(config.lark.opsAlertCooldownMs, 300_000);
   assert.equal(config.meegleIdentity.enabled, true);
   assert.equal(config.meegleIdentity.bin, "/opt/bin/meegle");

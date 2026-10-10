@@ -41,7 +41,7 @@ const schema = z.object({
   CODEX_PROBE_TIMEOUT_MS: positiveInt(30_000),
   CODEX_PROBE_INTERVAL_MS: positiveInt(30 * 60_000),
   CODEX_PROBE_FAILURE_THRESHOLD: positiveInt(2),
-  CODEX_MAX_CONCURRENT_RUNS: positiveInt(2),
+  CODEX_MAX_CONCURRENT_RUNS: positiveInt(4),
   PER_USER_MEEGLE_AUTH: z
     .enum(["true", "false"])
     .default("false")

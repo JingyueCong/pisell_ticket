@@ -13,7 +13,7 @@
 - 复用插件现有的类型路由、查重、创建/更新授权、附件归档和流程就绪检查。
 - SQLite 记录消息状态并按飞书 `message_id` 幂等。同一消息失败后不会自动重放，以免外部写入结果不明时重复建单。
 - 服务启动时会先运行一次无工具、无写入的结构化 `codex exec` 探针；运行中默认每 30 分钟在无业务任务时复检。连续两次失败会把 `/healthz` 降为 503 并暂停接单，恢复后自动重新接单，因此不会给单条工单增加探针等待时间。
-- 所有 Codex 进程共享全局并发上限（默认 2），避免不同员工同时提交时耗尽 Mac mini 资源；同一员工仍保持串行。
+- 所有 Codex 进程共享全局并发上限（默认 4），允许最多四名不同员工并行处理；同一员工仍保持串行，避免上下文交叉。
 - 每条消息保存不含业务正文的步骤级操作日志；未知外部写入失败不自动重试，管理员可按消息 ID 查看、核对并记录人工处置。
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
@@ -121,7 +121,7 @@ INTERNAL_TICKET_SENDER_NAME=Echo
 - `CODEX_MODEL`、`CODEX_PROFILE`：可选；留空时沿用服务账号的 Codex 默认配置。
 - `CODEX_PROBE_TIMEOUT_MS`：单次结构化探针超时，默认 30000 毫秒。
 - `CODEX_PROBE_INTERVAL_MS`、`CODEX_PROBE_FAILURE_THRESHOLD`：后台复检间隔和降级阈值，默认 30 分钟、连续 2 次；业务任务运行时跳过本轮探针。
-- `CODEX_MAX_CONCURRENT_RUNS`：全局 Codex 并发上限，默认 2。
+- `CODEX_MAX_CONCURRENT_RUNS`：全局 Codex 并发上限，默认 4；生产环境可按机器资源显式覆盖。
 - `RESOURCE_RETENTION_DAYS`、`AUDIT_RETENTION_DAYS`、`MAINTENANCE_INTERVAL_MS`：附件、审计和清理周期，默认 30 天、180 天、1 小时；开放草稿引用的附件不会被删除。
 - `MAX_HISTORY_MESSAGES`：每轮提供给 Agent 的最近消息数，默认 12；这是消息数，不是工单数。
 - `MAX_HISTORY_AGE_DAYS`：超过该时间的历史不再进入模型上下文，默认 30 天；不会删除 SQLite 原始记录。
