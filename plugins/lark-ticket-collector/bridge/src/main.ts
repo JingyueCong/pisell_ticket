@@ -6,6 +6,8 @@ import {
   CodexRuntimeCompatibilityError,
 } from "./codex-backend.js";
 import { loadConfig } from "./config.js";
+import { createBridgeHttpHandler } from "./internal-api.js";
+import { InternalTicketService } from "./internal-ticket-service.js";
 import { LarkTicketService } from "./lark-service.js";
 import { logger } from "./logger.js";
 import { runMaintenance } from "./maintenance.js";
@@ -15,29 +17,15 @@ import { BridgeStore } from "./store.js";
 import { RuntimeMonitor } from "./runtime-monitor.js";
 import { VisitRecordLoader } from "./visit-record.js";
 
-function startHealthServer(input: {
+function startHttpServer(input: {
   host: string;
   port: number;
   status: () => { ready: boolean; reason?: string };
+  internalTicketService?: InternalTicketService;
+  internalToken?: string;
 }): Server | undefined {
   if (input.port === 0) return undefined;
-  const server = createServer((request, response) => {
-    if (request.url !== "/healthz") {
-      response.writeHead(404, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: false, error: "not_found" }));
-      return;
-    }
-    const status = input.status();
-    response.writeHead(status.ready ? 200 : 503, {
-      "content-type": "application/json",
-    });
-    response.end(
-      JSON.stringify({
-        ok: status.ready,
-        ...(!status.ready && status.reason ? { reason: status.reason } : {}),
-      }),
-    );
-  });
+  const server = createServer(createBridgeHttpHandler(input));
   server.listen(input.port, input.host, () => {
     logger.info("health.listening", { host: input.host, port: input.port });
   });
@@ -76,6 +64,9 @@ async function main(): Promise<void> {
     attachmentArchiver,
     visitRecordLoader,
   );
+  const internalTicketService = config.internalApi.enabled
+    ? new InternalTicketService(config, store, agent, identityManager)
+    : undefined;
   service.setAccepting(false);
   let healthStatus: { ready: boolean; reason?: string } = {
     ready: false,
@@ -84,9 +75,11 @@ async function main(): Promise<void> {
   let shuttingDown = false;
   let maintenanceTimer: NodeJS.Timeout | undefined;
   let runtimeMonitor: RuntimeMonitor | undefined;
-  const health = startHealthServer({
+  const health = startHttpServer({
     ...config.health,
     status: () => healthStatus,
+    ...(internalTicketService ? { internalTicketService } : {}),
+    ...(config.internalApi.token ? { internalToken: config.internalApi.token } : {}),
   });
 
   const shutdown = async (signal: string) => {
@@ -198,6 +191,7 @@ async function main(): Promise<void> {
     maxConcurrentCodexRuns: config.codex.maxConcurrentRuns,
     periodicProbeMs: config.codex.probeIntervalMs,
     opsAlertsConfigured: Boolean(config.lark.opsAlertChatId),
+    internalCustomerServiceApi: config.internalApi.enabled,
   });
 }
 

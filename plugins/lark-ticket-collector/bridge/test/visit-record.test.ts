@@ -55,6 +55,7 @@ function config(resourceDir: string): BridgeConfig {
       maxResourceBytes: 25 * 1024 * 1024,
     },
     health: { host: "127.0.0.1", port: 0 },
+    internalApi: { enabled: false },
     maintenance: {
       resourceRetentionMs: 30 * 24 * 60 * 60_000,
       auditRetentionMs: 180 * 24 * 60 * 60_000,

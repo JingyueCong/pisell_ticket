@@ -175,3 +175,24 @@ export interface AttachmentArchiveReport {
 export interface AgentBackend {
   run(request: AgentRequest): Promise<AgentResult>;
 }
+
+export interface InternalCustomerTicketRequest {
+  requestId: string;
+  conversationId: string;
+  sourceChatId: string;
+  sourceMessageId: string;
+  senderName?: string;
+  merchantName?: string;
+  content: string;
+  context: Array<{
+    role: MessageRole;
+    content: string;
+  }>;
+}
+
+export interface InternalCustomerTicketResponse {
+  reply: string;
+  draftOpen: boolean;
+  workItemIds: string[];
+  cached: boolean;
+}

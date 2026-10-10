@@ -20,6 +20,7 @@
 - 可启用“机器人入群即监听”：任何主动加入机器人的群内出现一条飞书妙记链接后，无需 @，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务”客服主单。群内普通消息仍受原群白名单与 `REQUIRE_MENTION` 约束。
 - 员工级 Meegle 身份会同时通过绝对 wrapper 路径、动态 `shell_environment_policy` 和关闭本轮 shell snapshot 三层固定；创建命令不会因登录 shell 重排 `PATH` 而退回默认 Echo profile。
 - 可启用员工级 Meegle OAuth：每位员工首次使用时绑定自己的身份，之后由该员工身份执行查重、创建、更新、附件和回读，系统“创建人”因此等于飞书消息提交人；禁止回退到 Echo 或其他共用账号。
+- 可启用仅监听 `127.0.0.1` 的内部客服入口，让同一台 Mac mini 上的客户信息 Agent 复用本服务的 Agent、查重、创建和回读链路。该入口权威锁定 `customer_only`，只创建客服主单，不创建或关联 T1/T2/T3/T5 等配套项。
 
 ## 架构
 
@@ -97,6 +98,9 @@ MEEGLE_PROJECT_KEY=v2qint
 LARK_CLI_BIN=/absolute/path/to/lark-cli
 # 可选：把当前员工 open_id 复用到一个已经存在的专属 Meegle profile。
 MEEGLE_PROFILE_OVERRIDES=ou_echo=default
+INTERNAL_API_TOKEN=replace_with_a_random_token
+INTERNAL_TICKET_SENDER_ID=ou_verified_ticket_app_sender
+INTERNAL_TICKET_SENDER_NAME=Echo
 ```
 
 关键项：
@@ -123,6 +127,7 @@ MEEGLE_PROFILE_OVERRIDES=ou_echo=default
 - `MAX_HISTORY_AGE_DAYS`：超过该时间的历史不再进入模型上下文，默认 30 天；不会删除 SQLite 原始记录。
 - `DRAFT_TTL_HOURS`：未完成结构化草稿的有效期，默认 168 小时（7 天）。过期草稿不会继续补填。
 - `HEALTH_PORT=0`：关闭健康检查端口；默认只监听 `127.0.0.1:8787/healthz`。
+- `INTERNAL_API_TOKEN` 与 `INTERNAL_TICKET_SENDER_ID`：同时配置后启用 `POST /internal/customer-service-tickets`。接口与健康检查共用 loopback 监听地址，不得把 `HEALTH_HOST` 改为公网地址。发送者 ID 必须是本工单应用作用域内已验证并绑定 Meegle 身份的员工；`INTERNAL_TICKET_SENDER_NAME` 仅用于审计展示。
 
 不要提交 `.env`，不要把 App Secret 写进飞书消息或日志。建议通过主机密钥管理器或部署平台的 Secret 注入环境变量。
 

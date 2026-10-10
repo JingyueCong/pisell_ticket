@@ -26,6 +26,9 @@ test("loadConfig parses allowlists and resolves paths", () => {
     MEEGLE_BIN: "/opt/bin/meegle",
     MEEGLE_PROJECT_KEY: "pisell",
     MEEGLE_PROFILE_OVERRIDES: "ou_a=default,ou_b=ticket-bob",
+    INTERNAL_API_TOKEN: "test-internal-token-at-least-24-characters",
+    INTERNAL_TICKET_SENDER_ID: "ou_ticket_service",
+    INTERNAL_TICKET_SENDER_NAME: "Echo",
     HEALTH_PORT: "0",
   });
 
@@ -37,6 +40,9 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.lark.cliBin, "/opt/bin/lark-cli");
   assert.equal(config.lark.handoffChatId, "oc_yoko");
   assert.equal(config.health.port, 0);
+  assert.equal(config.internalApi.enabled, true);
+  assert.equal(config.internalApi.submitterSenderId, "ou_ticket_service");
+  assert.equal(config.internalApi.submitterName, "Echo");
   assert.equal(config.codex.timeoutMs, 600_000);
   assert.equal(config.codex.probeTimeoutMs, 30_000);
   assert.equal(config.codex.probeIntervalMs, 30 * 60_000);
@@ -54,6 +60,33 @@ test("loadConfig parses allowlists and resolves paths", () => {
   assert.equal(config.maintenance.resourceRetentionMs, 30 * 24 * 60 * 60_000);
   assert.equal(config.maintenance.auditRetentionMs, 180 * 24 * 60 * 60_000);
   assert.match(config.codex.workspace, /workspace$/);
+});
+
+test("loadConfig rejects a partially configured or non-loopback internal API", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        LARK_APP_ID: "cli_test",
+        LARK_APP_SECRET: "secret",
+        BRIDGE_WORKSPACE: "./workspace",
+        INTERNAL_API_TOKEN: "test-internal-token-at-least-24-characters",
+        HEALTH_PORT: "0",
+      }),
+    /configured together/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        LARK_APP_ID: "cli_test",
+        LARK_APP_SECRET: "secret",
+        BRIDGE_WORKSPACE: "./workspace",
+        INTERNAL_API_TOKEN: "test-internal-token-at-least-24-characters",
+        INTERNAL_TICKET_SENDER_ID: "ou_ticket_service",
+        HEALTH_HOST: "0.0.0.0",
+        HEALTH_PORT: "8787",
+      }),
+    /loopback/,
+  );
 });
 
 test("loadConfig combines producer env id with runtime parsing rules", () => {

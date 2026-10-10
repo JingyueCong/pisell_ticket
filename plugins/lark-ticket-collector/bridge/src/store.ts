@@ -37,6 +37,12 @@ interface MessageRow {
   updated_at: number;
 }
 
+export interface StoredMessageResult {
+  status: MessageStatus;
+  responseText?: string;
+  errorText?: string;
+}
+
 interface DraftRow {
   id: string;
   conversation_key: string;
@@ -279,6 +285,27 @@ export class BridgeStore {
         .run(input.messageId, input.chatId, input.senderId, now, now);
       return true;
     })();
+  }
+
+  messageResult(messageId: string): StoredMessageResult | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT status, response_text, error_text
+         FROM inbound_messages WHERE message_id = ?`,
+      )
+      .get(messageId) as
+      | {
+          status: MessageStatus;
+          response_text: string | null;
+          error_text: string | null;
+        }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      status: row.status,
+      ...(row.response_text ? { responseText: row.response_text } : {}),
+      ...(row.error_text ? { errorText: row.error_text } : {}),
+    };
   }
 
   assignNextProducer(input: {

@@ -55,6 +55,9 @@ const schema = z.object({
   BRIDGE_RESOURCE_DIR: z.string().default("./var/resources"),
   HEALTH_HOST: z.string().default("127.0.0.1"),
   HEALTH_PORT: z.coerce.number().int().min(0).max(65_535).default(8787),
+  INTERNAL_API_TOKEN: optionalString,
+  INTERNAL_TICKET_SENDER_ID: optionalString,
+  INTERNAL_TICKET_SENDER_NAME: optionalString,
   MAX_REPLY_CHARS: positiveInt(12_000),
   MAX_HISTORY_MESSAGES: positiveInt(12),
   MAX_HISTORY_AGE_DAYS: positiveInt(30),
@@ -207,6 +210,12 @@ export interface BridgeConfig {
     host: string;
     port: number;
   };
+  internalApi: {
+    enabled: boolean;
+    token?: string;
+    submitterSenderId?: string;
+    submitterName?: string;
+  };
   maintenance: {
     resourceRetentionMs: number;
     auditRetentionMs: number;
@@ -216,6 +225,21 @@ export interface BridgeConfig {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
   const parsed = schema.parse(env);
+  const internalFields = [parsed.INTERNAL_API_TOKEN, parsed.INTERNAL_TICKET_SENDER_ID];
+  if (internalFields.some(Boolean) && !internalFields.every(Boolean)) {
+    throw new Error(
+      "INTERNAL_API_TOKEN and INTERNAL_TICKET_SENDER_ID must be configured together",
+    );
+  }
+  if (parsed.INTERNAL_API_TOKEN && parsed.INTERNAL_API_TOKEN.length < 24) {
+    throw new Error("INTERNAL_API_TOKEN must contain at least 24 characters");
+  }
+  if (
+    parsed.INTERNAL_API_TOKEN &&
+    !["127.0.0.1", "::1", "localhost"].includes(parsed.HEALTH_HOST)
+  ) {
+    throw new Error("the internal ticket API may only listen on a loopback host");
+  }
   const cwd = process.cwd();
   const workspace = resolve(cwd, parsed.BRIDGE_WORKSPACE);
   const contentMaintenanceProducerSource =
@@ -279,6 +303,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     health: {
       host: parsed.HEALTH_HOST,
       port: parsed.HEALTH_PORT,
+    },
+    internalApi: {
+      enabled: Boolean(parsed.INTERNAL_API_TOKEN && parsed.INTERNAL_TICKET_SENDER_ID),
+      ...(parsed.INTERNAL_API_TOKEN ? { token: parsed.INTERNAL_API_TOKEN } : {}),
+      ...(parsed.INTERNAL_TICKET_SENDER_ID
+        ? { submitterSenderId: parsed.INTERNAL_TICKET_SENDER_ID }
+        : {}),
+      ...(parsed.INTERNAL_TICKET_SENDER_NAME
+        ? { submitterName: parsed.INTERNAL_TICKET_SENDER_NAME }
+        : {}),
     },
     maintenance: {
       resourceRetentionMs: parsed.RESOURCE_RETENTION_DAYS * 24 * 60 * 60_000,
