@@ -12,7 +12,7 @@ const T3 = /(?:^|[^a-z0-9])t\s*3(?:[^a-z0-9]|$)/u;
 const T4 = /(?:^|[^a-z0-9])t\s*4(?:[^a-z0-9]|$)/u;
 const T5 = /(?:^|[^a-z0-9])t\s*5(?:[^a-z0-9]|$)/u;
 
-const CONTENT_MAINTENANCE = /内容维护|内容制作|代制作/u;
+const CONTENT_MAINTENANCE = /内容维护|内容制作|内容工单|代制作/u;
 const DEMAND_POOL = /需求池|功能建议|功能改进/u;
 const CUSTOMER_CARD_MACHINE = /客户刷卡机|刷卡机申请|刷卡机(?:工单|工作项)/u;
 const RISK_CONTROL = /风控(?:处理|工单|工作项)?|chargeback|拒付/iu;
@@ -28,7 +28,7 @@ function standaloneRequested(text: string): boolean {
   return (
     STANDALONE_MODIFIER.test(text) ||
     /(?:不要|无需|不需要)(?:[^，。\n]{0,10})客服工单/u.test(text) ||
-    /(?:只|仅)(?:[^，。\n]{0,10})(?:内容维护|需求池|客户刷卡机|风控处理|阻断性问题|t\s*-?\s*bug)/iu.test(
+    /(?:只|仅)(?:[^，。\n]{0,10})(?:内容维护|内容工单|需求池|客户刷卡机|风控处理|阻断性问题|t\s*-?\s*bug)/iu.test(
       text,
     )
   );

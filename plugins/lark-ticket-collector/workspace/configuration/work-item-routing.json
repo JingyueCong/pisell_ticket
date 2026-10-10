@@ -130,7 +130,7 @@
         "creation_aliases": [
           {"alias": "T1", "mode": "customer_bundle", "customer_option_name": "T1核心阻断性问题", "paired_type": "blocking_issue"},
           {"alias": "T2", "mode": "customer_bundle", "customer_option_name": "T2非核心阻断性问题类流转升级", "paired_type": "blocking_issue"},
-          {"alias": "T3 or 内容维护", "mode": "customer_bundle", "customer_option_name": "T3客户代运营请求-内容维护", "paired_type": "content_maintenance"},
+          {"alias": "T3 or 内容维护 or 内容工单", "mode": "customer_bundle", "customer_option_name": "T3客户代运营请求-内容维护", "paired_type": "content_maintenance"},
           {"alias": "T5 or 功能建议/改进", "mode": "customer_bundle", "customer_option_name": "T5功能建议/改进类-需求", "paired_type": "demand_pool"},
           {"alias": "客户刷卡机", "mode": "customer_bundle", "customer_option_name": "客户刷卡机", "paired_type": "customer_card_machine"},
           {"alias": "风控处理 or Chargeback", "mode": "customer_bundle", "customer_option_name": "风控处理", "paired_type": "risk_control"},

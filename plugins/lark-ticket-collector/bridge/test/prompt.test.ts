@@ -57,7 +57,7 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /mode: customer_bundle/);
   assert.match(prompt, /authoritative: true/);
   assert.match(prompt, /创建内容维护工单.*默认表示客服工单 \+ T3 内容维护配套/);
-  assert.match(prompt, /只有员工明确说“单独\/独立\/仅\/只创建内容维护工单”/);
+  assert.match(prompt, /只有员工明确说“单独\/独立\/仅\/只创建内容维护工单或内容工单”/);
   assert.match(prompt, /客服外向关联已回读验证/);
   assert.match(prompt, /附件归档完全由 Bridge 的确定性代码执行/);
   assert.match(prompt, /不得调用 `attachment \+upload`/);

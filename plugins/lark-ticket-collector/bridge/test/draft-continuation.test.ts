@@ -30,7 +30,7 @@ const openedT3: DraftMemoryUpdate = {
 };
 
 test("route corrections continue the referenced draft instead of opening a blank draft", () => {
-  const messageText = "不用T2工单，建立T3内容工单即可";
+  const messageText = "不用T2工单，建立内容工单即可";
   assert.equal(isDraftRouteCorrection(messageText), true);
   assert.deepEqual(
     enforceDraftRouteContinuation({ messageText, activeDraft, draft: openedT3 }),

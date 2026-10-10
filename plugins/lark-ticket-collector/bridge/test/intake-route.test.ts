@@ -8,6 +8,7 @@ test("T3 and content-maintenance creation aliases lock a customer bundle", () =>
     "创建T3工单 需要确认人Annie",
     "给我创建内容维护工单",
     "创建客服工单，并配套创建内容维护工单",
+    "创建客服工单并关联内容工单，把截图中显示 Sold Out 的商品重新上架，并检查为什么会显示 Sold Out",
     "不用T2工单，建立T3内容工单即可",
   ]) {
     const route = deriveIntakeRoutePolicy(input);
@@ -18,9 +19,23 @@ test("T3 and content-maintenance creation aliases lock a customer bundle", () =>
   }
 });
 
+test("content-ticket wording stays locked to T3 despite diagnostic language", () => {
+  const route = deriveIntakeRoutePolicy(
+    "创建客服工单并关联内容工单，把截图中显示 Sold Out 的商品重新上架，并检查为什么会显示 Sold Out",
+  );
+  assert.deepEqual(route, {
+    mode: "customer_bundle",
+    authoritative: true,
+    customerIssueOption: "T3客户代运营请求-内容维护",
+    pairedWorkItemType: "content_maintenance",
+    reason: "content_maintenance_creation_alias_defaults_to_customer_bundle",
+  });
+});
+
 test("content maintenance is standalone only when the employee says so explicitly", () => {
   for (const input of [
     "单独创建内容维护工单",
+    "只创建内容工单，不要客服工单",
     "只创建内容维护工单，不要客服工单",
     "独立新建一个 T3 工单",
   ]) {

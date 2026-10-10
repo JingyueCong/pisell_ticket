@@ -169,7 +169,7 @@
       "type_key": "67df87a8baf45c9c247ba778",
       "platform_status": "active",
       "support_mode": "standard_create",
-      "intent_aliases": ["内容维护", "内容制作", "代制作", "QA内容"],
+      "intent_aliases": ["内容维护", "内容制作", "内容工单", "代制作", "QA内容"],
       "create_fields": [
         {"field_key": "name", "field_name": "名称", "field_type": "text", "source": "platform-core"},
         {"field_key": "template", "field_name": "内容维护类型", "field_type": "work_item_template"},

@@ -1,7 +1,7 @@
 import type { DraftMemoryUpdate, DraftSnapshot } from "./types.js";
 
 const TICKET_TYPE_REFERENCE =
-  /(?:t\s*[1-5]|客服工单|阻断性问题|内容维护|需求池|客户刷卡机|风控处理)/giu;
+  /(?:t\s*[1-5]|客服工单|阻断性问题|内容维护|内容工单|需求池|客户刷卡机|风控处理)/giu;
 const DROPS_CURRENT_ROUTE = /(?:不用|不要|无需|取消|去掉|移除|不建|不创建)/u;
 const NAMES_REPLACEMENT = /(?:改成|改为|换成|切换(?:成|为)?|建立|创建|只要|只需|即可)/u;
 const EXPLICITLY_STARTS_ANOTHER =
