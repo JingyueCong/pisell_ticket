@@ -105,6 +105,9 @@ test("internal handoff forces customer-only routing and is idempotent", async ()
     source_message_id: "om_support_1",
     sender_name: "测试员工",
     merchant_name: "青禾便当",
+    problem_source: "Zendesk 工单系统（含电话、Chat、留言）",
+    issue_type: "内部跟进处理",
+    rating: "三星",
     content: "收银机无法打印小票，怎么处理？",
     context: [{ role: "user", content: "商户是青禾便当" }],
   });
@@ -120,10 +123,13 @@ test("internal handoff forces customer-only routing and is idempotent", async ()
     assert.deepEqual(envelope.routePolicy, {
       mode: "customer_only",
       authoritative: true,
-      reason: "trusted_merchant_profile_unanswered_support_handoff",
+      reason: "trusted_customer_support_human_handoff",
     });
     assert.match(envelope.content, /只创建客服主单/);
     assert.match(envelope.content, /青禾便当/);
+    assert.match(envelope.content, /Zendesk 工单系统/);
+    assert.match(envelope.content, /内部跟进处理/);
+    assert.match(envelope.content, /三星/);
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });

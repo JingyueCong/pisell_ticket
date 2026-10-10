@@ -22,6 +22,9 @@ const requestSchema = z
     source_message_id: z.string().trim().min(1).max(300),
     sender_name: z.string().trim().min(1).max(200).optional(),
     merchant_name: z.string().trim().min(1).max(300).optional(),
+    problem_source: z.string().trim().min(1).max(200).optional(),
+    issue_type: z.string().trim().min(1).max(200).optional(),
+    rating: z.string().trim().min(1).max(100).optional(),
     content: z.string().trim().min(1).max(12_000),
     context: z.array(contextMessage).max(20).default([]),
   })
@@ -38,6 +41,9 @@ export function parseInternalCustomerTicketRequest(
     sourceMessageId: parsed.source_message_id,
     ...(parsed.sender_name ? { senderName: parsed.sender_name } : {}),
     ...(parsed.merchant_name ? { merchantName: parsed.merchant_name } : {}),
+    ...(parsed.problem_source ? { problemSource: parsed.problem_source } : {}),
+    ...(parsed.issue_type ? { issueType: parsed.issue_type } : {}),
+    ...(parsed.rating ? { rating: parsed.rating } : {}),
     content: parsed.content,
     context: parsed.context,
   };

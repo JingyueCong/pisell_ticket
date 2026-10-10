@@ -16,15 +16,18 @@ import { customerIntakeOwnerTarget } from "./work-item-outcomes.js";
 function requestText(input: InternalCustomerTicketRequest): string {
   const context = input.context
     .slice(-12)
-    .map((item) => `${item.role === "user" ? "用户" : "客户信息机器人"}：${item.content}`)
+    .map((item) => `${item.role === "user" ? "客户" : "智能客服"}：${item.content}`)
     .join("\n");
   return [
     "请根据以下未解决的客户问题创建客服工单。只创建客服主单，不创建、复用或关联任何 T1/T2/T3/T5、阻断性问题、内容维护、需求或其他配套工作项。",
     input.merchantName ? `商户：${input.merchantName}` : undefined,
     input.senderName ? `问题提出人：${input.senderName}` : undefined,
+    input.problemSource ? `问题来源：${input.problemSource}` : undefined,
+    input.issueType ? `对应问题类型：${input.issueType}` : undefined,
+    input.rating ? `工单问题等级：${input.rating}` : undefined,
     `原始问题：${input.content}`,
-    context ? `客户信息 Agent 最近对话：\n${context}` : undefined,
-    `原始飞书来源：chat=${input.sourceChatId} message=${input.sourceMessageId}`,
+    context ? `智能客服最近对话：\n${context}` : undefined,
+    `原始来源：conversation=${input.sourceChatId} event=${input.sourceMessageId}`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -54,8 +57,8 @@ export class InternalTicketService {
     input: InternalCustomerTicketRequest,
     submitterSenderId: string,
   ): Promise<InternalCustomerTicketResponse> {
-    const messageId = `merchant-profile:${input.requestId}`;
-    const chatId = `merchant-profile:${input.conversationId}`;
+    const messageId = `internal-support:${input.requestId}`;
+    const chatId = `internal-support:${input.conversationId}`;
     const existing = this.store.messageResult(messageId);
     if (existing?.status === "completed" && existing.responseText) {
       const activeDraft = this.activeDraft(chatId, submitterSenderId, input.conversationId);
@@ -84,7 +87,7 @@ export class InternalTicketService {
       messageId,
       step: "internal_message_claimed",
       status: "succeeded",
-      detail: { source: "merchant_profile_agent" },
+      detail: { source: "customer_support_agent" },
     });
 
     try {
@@ -102,14 +105,14 @@ export class InternalTicketService {
           ? { senderName: this.config.internalApi.submitterName }
           : {}),
         content: requestText(input),
-        rawContentType: "internal_customer_service_handoff",
+        rawContentType: "internal_customer_support_handoff",
         threadId: input.conversationId,
         createTime: Date.now(),
         resources: [],
         routePolicy: {
           mode: "customer_only",
           authoritative: true,
-          reason: "trusted_merchant_profile_unanswered_support_handoff",
+          reason: "trusted_customer_support_human_handoff",
         },
         ...(meegleIdentity ? { meegleIdentity } : {}),
       };

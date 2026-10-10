@@ -183,6 +183,9 @@ export interface InternalCustomerTicketRequest {
   sourceMessageId: string;
   senderName?: string;
   merchantName?: string;
+  problemSource?: string;
+  issueType?: string;
+  rating?: string;
   content: string;
   context: Array<{
     role: MessageRole;
