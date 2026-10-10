@@ -83,9 +83,25 @@ test("customer intake node owner is force-updated and read back with the verifie
               {
                 name: "创建工单",
                 state_key: "started",
-                owners: updated
-                  ? [{ user_key: "meegle_alice" }]
-                  : [{ user_key: "echo" }],
+                node_key: "started-instance",
+                form_items: [
+                  {
+                    field_key: "owner",
+                    field_value: updated
+                      ? [
+                          {
+                            user_key: "meegle_alice",
+                            name: "Alice",
+                            email: "alice@pisell.example",
+                            avatar_url: "https://example.invalid/alice.png",
+                          },
+                        ]
+                      : [
+                          { user_key: "echo", name: "Echo" },
+                          { user_key: "default-owner", name: "Default Owner" },
+                        ],
+                  },
+                ],
               },
             ],
           },
@@ -111,8 +127,18 @@ test("customer intake node owner is force-updated and read back with the verifie
     const updateCall = calls.find((call) => call.includes("update-node"));
     assert.ok(updateCall);
     assert.equal(updateCall?.[updateCall.indexOf("--profile") + 1], "lark-alice");
-    assert.equal(updateCall?.[updateCall.indexOf("--node-owners") + 1], "meegle_alice");
-    assert.equal(updateCall?.[updateCall.indexOf("--project-key") + 1], "v2qint");
+    const updateParams = JSON.parse(updateCall?.[updateCall.indexOf("--params") + 1] ?? "{}") as {
+      project_key?: string;
+      node_id?: string;
+      node_owners?: string[];
+    };
+    assert.equal(updateParams.project_key, "v2qint");
+    assert.equal(updateParams.node_id, "started");
+    assert.deepEqual(updateParams.node_owners, ["meegle_alice"]);
+    assert.ok(calls.every((call) => !call.includes("--node-owners")));
+    assert.ok(calls.filter((call) => call.includes("get-node")).every(
+      (call) => call[call.indexOf("--field-key-list") + 1] === "_all",
+    ));
     assert.equal(calls.filter((call) => call.includes("get-node")).length, 2);
   } finally {
     rmSync(directory, { recursive: true, force: true });

@@ -9,6 +9,7 @@ import { loadConfig } from "./config.js";
 import { LarkTicketService } from "./lark-service.js";
 import { logger } from "./logger.js";
 import { runMaintenance } from "./maintenance.js";
+import { MeegleAttachmentArchiver } from "./meegle-attachment-archiver.js";
 import { MeegleIdentityManager } from "./meegle-identity.js";
 import { BridgeStore } from "./store.js";
 import { RuntimeMonitor } from "./runtime-monitor.js";
@@ -60,6 +61,9 @@ async function main(): Promise<void> {
   const identityManager = config.meegleIdentity.enabled
     ? new MeegleIdentityManager(config)
     : undefined;
+  const attachmentArchiver = config.meegleIdentity.enabled
+    ? new MeegleAttachmentArchiver(config)
+    : undefined;
   const visitRecordLoader =
     config.lark.visitRecordAllGroups || config.lark.visitRecordChatIds.length
     ? new VisitRecordLoader(config)
@@ -69,6 +73,7 @@ async function main(): Promise<void> {
     store,
     agent,
     identityManager,
+    attachmentArchiver,
     visitRecordLoader,
   );
   service.setAccepting(false);

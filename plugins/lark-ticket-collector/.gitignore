@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .ticket-collector/drafts/
 bridge/.env
+bridge/.env.*
+!bridge/.env.example
 bridge/dist/
 bridge/node_modules/
 bridge/var/

@@ -116,8 +116,55 @@ function workflowNodeId(node: Record<string, unknown>): string | undefined {
   return (
     stringValue(node.state_key) ??
     stringValue(node.node_id) ??
+    stringValue(node.node_key) ??
     stringValue(node.id)
   );
+}
+
+function collectOwnerKeys(value: unknown, target: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const child of value) collectOwnerKeys(child, target);
+    return;
+  }
+  if (typeof value === "string" && value.trim()) {
+    target.add(value.trim());
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const object = value as Record<string, unknown>;
+  const userKey = stringValue(object.user_key) ?? stringValue(object.userKey);
+  if (userKey) target.add(userKey);
+  for (const child of Object.values(object)) {
+    if (child && typeof child === "object") collectOwnerKeys(child, target);
+  }
+}
+
+function workflowNodeOwnerKeys(node: Record<string, unknown>): Set<string> {
+  const result = new Set<string>();
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(node, objects);
+  for (const object of objects) {
+    for (const key of [
+      "owner",
+      "owners",
+      "node_owners",
+      "nodeOwners",
+      "owner_list",
+      "ownerList",
+      "user_key_list",
+      "userKeyList",
+    ]) {
+      if (Object.hasOwn(object, key)) collectOwnerKeys(object[key], result);
+    }
+    const fieldKey = stringValue(object.field_key) ?? stringValue(object.fieldKey);
+    if (fieldKey === "owner") {
+      collectOwnerKeys(
+        object.field_value ?? object.fieldValue ?? object.value,
+        result,
+      );
+    }
+  }
+  return result;
 }
 
 function normalized(value: string): string {
@@ -289,6 +336,8 @@ export class MeegleIdentityManager {
       input.workItemId,
       "--node-id-list",
       "_all",
+      "--field-key-list",
+      "_all",
       "--format",
       "json",
     ];
@@ -303,14 +352,13 @@ export class MeegleIdentityManager {
       [
         "workflow",
         "update-node",
-        "--project-key",
-        this.config.meegleIdentity.projectKey,
-        "--work-item-id",
-        input.workItemId,
-        "--node-id",
-        nodeId,
-        "--node-owners",
-        input.identity.userKey,
+        "--params",
+        JSON.stringify({
+          project_key: this.config.meegleIdentity.projectKey,
+          work_item_id: input.workItemId,
+          node_id: nodeId,
+          node_owners: [input.identity.userKey],
+        }),
         "--format",
         "json",
       ],
@@ -322,7 +370,12 @@ export class MeegleIdentityManager {
       JSON.parse(verified.stdout) as unknown,
       "创建工单",
     );
-    if (!verifiedNode || !JSON.stringify(verifiedNode).includes(input.identity.userKey)) {
+    const verifiedOwners = verifiedNode ? workflowNodeOwnerKeys(verifiedNode) : new Set<string>();
+    if (
+      !verifiedNode ||
+      verifiedOwners.size !== 1 ||
+      !verifiedOwners.has(input.identity.userKey)
+    ) {
       throw new Error("Customer ticket intake node owner verification failed");
     }
     return { nodeId, ownerUserKey: input.identity.userKey };

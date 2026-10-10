@@ -1,6 +1,18 @@
 # 附件域
 
 附件上传/下载分两步：先调 `attachment prepare-upload` / `attachment prepare-download` 申请带签名的对象存储 URL，再与对象存储做一次或多次 HTTP 直连。Meegle CLI 内置 `attachment +upload` / `attachment +download` 一键封装，把两步合成一条命令；脚本里需要逐步控制时也可单独调上面的 prepare 命令。
+
+## 工作项附件字段写入协议
+
+上传成功不等于附件字段已归档；必须完成对象存储上传、目标字段写入、同字段回读三步。
+
+- 先针对当前工作项类型用 `workitem meta-fields` 确认目标字段是 `multi-file`；`file` 是另一种兼容协议，不得直接套用。
+- 单次上传结果映射为 `{"name","type","size","fileToken"}`；`type` 使用 `mime_type`，`size` 是十进制字符串，`fileToken` 使用上传返回的 `file_token`。附件数组再次 JSON.stringify 后作为字段的 `field_value` STRING。
+- 同一字段有多个附件时使用逐张追加：每一张开始前重新 `workitem get` 读取字段完整数组；已有对象必须原样保留，包括 `uid`、`url` 和未知服务端字段；只在末尾追加当前一个新对象，更新后立即回读成功才继续下一张。
+- 禁止一次写入多个新简化对象；该路径会触发 `MultiFileFieldStruct.Files` 的 `unique` 校验。禁止用当前单个对象覆盖旧数组。
+- 验收使用文件名、大小、最终数量和可用标识的组合；服务端可能重签 token，不能只用 token 完全相等作为唯一成功条件。
+- 更新或回读不确定时重新读取最新数组，只重试当前仍缺文件，最多两次；不得用写入前的旧快照覆盖已经成功的附件。
+
 ## attachment prepare-upload
 申请上传签名。`work_item_id` 与 `work_item_type` **二选一必填**：已有工作项传 `work_item_id`；"创建工作项时同步上传附件" 场景传 `work_item_type`，两者同传时 `work_item_id` 优先。
 

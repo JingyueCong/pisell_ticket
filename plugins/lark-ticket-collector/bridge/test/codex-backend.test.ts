@@ -186,6 +186,7 @@ test("agent output schema requires a user reply and structured draft state", () 
   assert.deepEqual(AGENT_OUTPUT_SCHEMA.required, [
     "reply",
     "draft",
+    "work_item_outcomes",
     "attachment_archive",
   ]);
   assert.deepEqual(AGENT_OUTPUT_SCHEMA.properties.draft.properties.action.enum, [
@@ -208,6 +209,7 @@ test("structured agent output separates the employee reply from draft memory", (
           missing_fields: ["关联客户 / 店铺"],
           work_item_ids: [],
         },
+        work_item_outcomes: [],
         attachment_archive: {
           status: "not_applicable",
           expected_bindings: 0,
@@ -226,6 +228,7 @@ test("structured agent output separates the employee reply from draft memory", (
         missingFields: ["关联客户 / 店铺"],
         workItemIds: [],
       },
+      workItemOutcomes: [],
       attachmentArchive: {
         status: "not_applicable",
         expectedBindings: 0,

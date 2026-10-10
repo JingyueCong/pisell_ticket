@@ -25,8 +25,10 @@ export function enforceAttachmentCompletion(input: {
   hasReadableResources: boolean;
 }): AttachmentGateResult {
   const { result } = input;
-  const hasCreatedWorkItems = result.draft.workItemIds.length > 0;
-  if (!input.hasReadableResources || !hasCreatedWorkItems) {
+  const hasCommittedWorkItems = result.workItemOutcomes.some(
+    (outcome) => outcome.disposition !== "queried",
+  );
+  if (!input.hasReadableResources || !hasCommittedWorkItems) {
     return { text: result.text, draft: result.draft, blocked: false };
   }
 

@@ -130,8 +130,23 @@ export interface AgentRequest {
 export interface AgentResult {
   text: string;
   draft: DraftMemoryUpdate;
+  workItemOutcomes: WorkItemOutcome[];
   attachmentArchive: AttachmentArchiveReport;
   diagnostics: string[];
+}
+
+export type WorkItemOutcomeDisposition =
+  | "queried"
+  | "created"
+  | "reused"
+  | "updated";
+
+export type WorkItemOutcomeRole = "customer" | "paired" | "standalone";
+
+export interface WorkItemOutcome {
+  workItemId: string;
+  role: WorkItemOutcomeRole;
+  disposition: WorkItemOutcomeDisposition;
 }
 
 export type AttachmentArchiveStatus =

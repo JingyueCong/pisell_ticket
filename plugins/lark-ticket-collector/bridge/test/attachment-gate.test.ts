@@ -14,6 +14,10 @@ function result(overrides: Partial<AgentResult> = {}): AgentResult {
       missingFields: [],
       workItemIds: ["7131190889", "7131245709"],
     },
+    workItemOutcomes: [
+      { workItemId: "7131190889", role: "customer", disposition: "created" },
+      { workItemId: "7131245709", role: "paired", disposition: "created" },
+    ],
     attachmentArchive: {
       status: "failed",
       expectedBindings: 12,
@@ -114,6 +118,37 @@ test("a verified label with mismatched counts is rejected", () => {
 
   assert.equal(gated.blocked, true);
   assert.equal(gated.draft.action, "update");
+});
+
+test("queried duplicate candidates never trigger the attachment completion gate", () => {
+  const candidate = result({
+    text: "发现重复工单，请确认复用或仍创建",
+    draft: {
+      action: "update",
+      ticketType: "客服工单 + 内容维护",
+      summary: "等待重复工单选择",
+      missingFields: ["复用或仍创建"],
+      workItemIds: ["7129489137"],
+    },
+    workItemOutcomes: [
+      { workItemId: "7129489137", role: "customer", disposition: "queried" },
+    ],
+    attachmentArchive: {
+      status: "pending",
+      expectedBindings: 0,
+      verifiedBindings: 0,
+      targets: [],
+    },
+  });
+
+  const gated = enforceAttachmentCompletion({
+    result: candidate,
+    hasReadableResources: true,
+  });
+
+  assert.equal(gated.blocked, false);
+  assert.equal(gated.text, candidate.text);
+  assert.deepEqual(gated.draft, candidate.draft);
 });
 
 test("configuration screenshots may be explicitly marked not applicable", () => {

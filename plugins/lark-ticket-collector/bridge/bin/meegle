@@ -20,4 +20,38 @@ for argument in "$@"; do
   esac
 done
 
+# Attachment mutations and customer intake owner correction are deliberately
+# outside the Agent capability boundary. The Bridge performs them with typed,
+# deterministic payloads and readback verification after the Agent returns.
+if [ "${1:-}" = "attachment" ]; then
+  case "${2:-}" in
+    +upload|prepare-upload)
+      echo "attachment writes are managed by the ticket bridge" >&2
+      exit 64
+      ;;
+  esac
+fi
+
+if [ "${1:-}" = "workitem" ] && [ "${2:-}" = "update" ]; then
+  for argument in "$@"; do
+    case "$argument" in
+      *fileToken*|*file_token*)
+        echo "attachment field writes are managed by the ticket bridge" >&2
+        exit 64
+        ;;
+    esac
+  done
+fi
+
+if [ "${1:-}" = "workflow" ] && [ "${2:-}" = "update-node" ]; then
+  for argument in "$@"; do
+    case "$argument" in
+      --node-owners|--node-owners=*|*node_owners*|*node-owners*)
+        echo "customer intake owner writes are managed by the ticket bridge" >&2
+        exit 64
+        ;;
+    esac
+  done
+fi
+
 exec "$MEEGLE_REAL_BIN" --profile "$MEEGLE_REQUEST_PROFILE" "$@"

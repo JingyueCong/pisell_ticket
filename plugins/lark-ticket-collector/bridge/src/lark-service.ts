@@ -14,6 +14,7 @@ import {
 import type { BridgeConfig } from "./config.js";
 import { AgentBackendError, buildAgentFailureReply } from "./agent-failure.js";
 import { enforceAttachmentCompletion } from "./attachment-gate.js";
+import { customerIntakeOwnerTarget } from "./work-item-outcomes.js";
 import { enforceDraftRouteContinuation } from "./draft-continuation.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
@@ -22,6 +23,7 @@ import {
   isMeegleAuthorizationConfirmation,
   MeegleIdentityManager,
 } from "./meegle-identity.js";
+import { MeegleAttachmentArchiver } from "./meegle-attachment-archiver.js";
 import { parseProducerNames } from "./producer-source.js";
 import { conversationKey } from "./prompt.js";
 import { BridgeStore } from "./store.js";
@@ -90,6 +92,7 @@ export class LarkTicketService {
     private readonly store: BridgeStore,
     private readonly agent: AgentBackend,
     private readonly identityManager?: MeegleIdentityManager,
+    private readonly attachmentArchiver?: MeegleAttachmentArchiver,
     private readonly visitRecordLoader?: VisitRecordLoader,
   ) {
     const allowedGroupIds = [
@@ -445,16 +448,59 @@ export class LarkTicketService {
         step: "agent_execution",
         status: "started",
       });
-      const rawResult = await this.agent.run({
+      let rawResult = await this.agent.run({
         envelope,
         history,
         ...(activeDraft ? { activeDraft } : {}),
         resourceRoot: this.config.storage.resourceDir,
       });
-      const hasReadableResources = [
+      const allResources = [
         ...(activeDraft?.resources ?? []),
         ...envelope.resources,
-      ].some((resource) => Boolean(resource.localPath) && !resource.error);
+      ];
+      const hasReadableResources = allResources.some(
+        (resource) => Boolean(resource.localPath) && !resource.error,
+      );
+      const hasCommittedWorkItems = rawResult.workItemOutcomes.some(
+        (outcome) => outcome.disposition !== "queried",
+      );
+      if (
+        hasReadableResources &&
+        hasCommittedWorkItems &&
+        rawResult.attachmentArchive.status !== "not_applicable" &&
+        meegleIdentity &&
+        this.attachmentArchiver
+      ) {
+        const attachmentArchive = await this.attachmentArchiver.archive({
+          identity: meegleIdentity,
+          targets: rawResult.attachmentArchive.targets,
+          resources: allResources,
+          workItemOutcomes: rawResult.workItemOutcomes,
+        });
+        rawResult = {
+          ...rawResult,
+          attachmentArchive,
+          text:
+            attachmentArchive.status === "verified"
+              ? [
+                  rawResult.text,
+                  "",
+                  `附件归档：Bridge 已回读验证 ${attachmentArchive.verifiedBindings}/${attachmentArchive.expectedBindings} 个绑定。`,
+                ].join("\n")
+              : rawResult.text,
+        };
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "deterministic_attachment_archive",
+          status: attachmentArchive.status === "verified" ? "succeeded" : "failed",
+          detail: {
+            expectedBindings: attachmentArchive.expectedBindings,
+            verifiedBindings: attachmentArchive.verifiedBindings,
+            targets: JSON.stringify(attachmentArchive.targets),
+            ...(attachmentArchive.note ? { note: attachmentArchive.note } : {}),
+          },
+        });
+      }
       const attachmentGate = enforceAttachmentCompletion({
         result: rawResult,
         hasReadableResources,
@@ -502,7 +548,10 @@ export class LarkTicketService {
         ["customer_bundle", "customer_only", "customer_auto"].includes(
           envelope.routePolicy?.mode ?? "",
         ) || /客服工单/u.test(result.draft.ticketType ?? activeDraft?.ticketType ?? "");
-      const customerWorkItemId = result.draft.workItemIds[0];
+      const customerWorkItemId = customerIntakeOwnerTarget(
+        result,
+        activeDraft?.workItemIds ?? [],
+      );
       if (
         customerRoute &&
         customerWorkItemId &&

@@ -58,7 +58,7 @@ export function isCodexRuntimeCompatibilityFailure(stderr: string): boolean {
 export const AGENT_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "draft", "attachment_archive"],
+  required: ["reply", "draft", "work_item_outcomes", "attachment_archive"],
   properties: {
     reply: { type: "string", minLength: 1 },
     draft: {
@@ -71,6 +71,23 @@ export const AGENT_OUTPUT_SCHEMA = {
         summary: { type: ["string", "null"] },
         missing_fields: { type: "array", items: { type: "string" }, maxItems: 50 },
         work_item_ids: { type: "array", items: { type: "string" }, maxItems: 50 },
+      },
+    },
+    work_item_outcomes: {
+      type: "array",
+      maxItems: 50,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["work_item_id", "role", "disposition"],
+        properties: {
+          work_item_id: { type: "string", minLength: 1 },
+          role: { type: "string", enum: ["customer", "paired", "standalone"] },
+          disposition: {
+            type: "string",
+            enum: ["queried", "created", "reused", "updated"],
+          },
+        },
       },
     },
     attachment_archive: {
@@ -145,6 +162,15 @@ const agentOutput = z.object({
     missing_fields: z.array(z.string()).max(50),
     work_item_ids: z.array(z.string()).max(50),
   }),
+  work_item_outcomes: z
+    .array(
+      z.object({
+        work_item_id: z.string().min(1),
+        role: z.enum(["customer", "paired", "standalone"]),
+        disposition: z.enum(["queried", "created", "reused", "updated"]),
+      }),
+    )
+    .max(50),
   attachment_archive: z.object({
     status: z.enum(["not_applicable", "pending", "verified", "failed"]),
     expected_bindings: z.number().int().nonnegative(),
@@ -165,7 +191,7 @@ const agentOutput = z.object({
 
 export function parseAgentOutput(
   rawOutput: string,
-): Pick<AgentResult, "text" | "draft" | "attachmentArchive"> {
+): Pick<AgentResult, "text" | "draft" | "workItemOutcomes" | "attachmentArchive"> {
   const parsed = agentOutput.parse(JSON.parse(rawOutput));
   return {
     text: parsed.reply.trim(),
@@ -178,6 +204,11 @@ export function parseAgentOutput(
       missingFields: parsed.draft.missing_fields,
       workItemIds: parsed.draft.work_item_ids,
     },
+    workItemOutcomes: parsed.work_item_outcomes.map((outcome) => ({
+      workItemId: outcome.work_item_id,
+      role: outcome.role,
+      disposition: outcome.disposition,
+    })),
     attachmentArchive: {
       status: parsed.attachment_archive.status,
       expectedBindings: parsed.attachment_archive.expected_bindings,
@@ -514,7 +545,10 @@ export class CodexCliBackend implements AgentBackend {
         throw new Error("工单 Agent 未返回可发送的结果。");
       }
 
-      let parsed: Pick<AgentResult, "text" | "draft" | "attachmentArchive">;
+      let parsed: Pick<
+        AgentResult,
+        "text" | "draft" | "workItemOutcomes" | "attachmentArchive"
+      >;
       try {
         parsed = parseAgentOutput(rawOutput);
       } catch (error) {
