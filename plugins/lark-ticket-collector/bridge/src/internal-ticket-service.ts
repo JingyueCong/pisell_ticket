@@ -17,6 +17,7 @@ import type {
   InboundEnvelope,
   InternalCustomerTicketRequest,
   InternalCustomerTicketResponse,
+  CustomerCrmResolution,
   MeegleRequestIdentity,
 } from "./types.js";
 import { customerIntakeOwnerTarget } from "./work-item-outcomes.js";
@@ -128,6 +129,23 @@ export class InternalTicketService {
     return this.queue.enqueue(submitterSenderId, () =>
       this.processSerialized(input, submitterSenderId),
     );
+  }
+
+  async resolveCustomerCrm(input: {
+    merchantName: string;
+    lookupHint?: string;
+  }): Promise<CustomerCrmResolution> {
+    const submitterSenderId = this.config.internalApi.submitterSenderId;
+    if (!this.config.internalApi.enabled || !submitterSenderId || !this.identityManager) {
+      throw new Error("internal customer CRM lookup is disabled");
+    }
+    const identity = await this.authorize(
+      submitterSenderId,
+      this.config.internalApi.submitterName,
+      "查询客户管理 CRM",
+    );
+    if (!identity) throw new Error("internal submitter identity is not configured");
+    return this.identityManager.resolveCustomerCrm({ identity, ...input });
   }
 
   private async processSerialized(

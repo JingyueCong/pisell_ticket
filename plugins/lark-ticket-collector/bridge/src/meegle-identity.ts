@@ -4,7 +4,11 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BridgeConfig } from "./config.js";
-import type { MeegleRequestIdentity } from "./types.js";
+import type {
+  CustomerCrmCandidate,
+  CustomerCrmResolution,
+  MeegleRequestIdentity,
+} from "./types.js";
 
 export interface ProcessResult {
   exitCode: number | null;
@@ -117,6 +121,52 @@ function collectObjects(value: unknown, target: Array<Record<string, unknown>>):
   const object = value as Record<string, unknown>;
   target.push(object);
   for (const child of Object.values(object)) collectObjects(child, target);
+}
+
+function mqlString(value: string): string {
+  return value.replaceAll("'", "''");
+}
+
+function mqlLike(value: string): string {
+  return mqlString(value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_"));
+}
+
+function scalarValue(value: unknown): string | undefined {
+  if ((typeof value === "string" || typeof value === "number") && String(value).trim()) {
+    return String(value).trim();
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const object = value as Record<string, unknown>;
+  for (const key of ["value", "label", "name", "text", "id"]) {
+    const candidate = scalarValue(object[key]);
+    if (candidate) return candidate;
+  }
+  return undefined;
+}
+
+function customerCrmCandidates(value: unknown, projectKey: string): CustomerCrmCandidate[] {
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(value, objects);
+  const found = new Map<string, CustomerCrmCandidate>();
+  for (const object of objects) {
+    const workItemId = ["work_item_id", "workItemId", "工作项ID", "工作项id", "id"]
+      .map((key) => scalarValue(object[key]))
+      .find(Boolean);
+    const name = ["name", "名称", "title"]
+      .map((key) => scalarValue(object[key]))
+      .find(Boolean);
+    if (!workItemId || !name || found.has(workItemId)) continue;
+    const status = ["work_item_status", "workItemStatus", "状态", "status"]
+      .map((key) => scalarValue(object[key]))
+      .find(Boolean);
+    found.set(workItemId, {
+      workItemId,
+      name,
+      ...(status ? { status } : {}),
+      url: `https://project.feishu.cn/${projectKey}/crm/detail/${workItemId}`,
+    });
+  }
+  return [...found.values()].slice(0, 10);
 }
 
 function findWorkflowNode(
@@ -415,6 +465,73 @@ export class MeegleIdentityManager {
       `Customer ticket intake node owner verification failed after 5 reads ` +
         `(expected=${input.identity.userKey}, actual=${[...verifiedOwners].join(",") || "none"})`,
     );
+  }
+
+  async resolveCustomerCrm(input: {
+    identity: MeegleRequestIdentity;
+    merchantName: string;
+    lookupHint?: string;
+  }): Promise<CustomerCrmResolution> {
+    const merchantName = input.merchantName.trim();
+    const lookupHint = input.lookupHint?.trim();
+    if (!merchantName) throw new Error("merchant name is required for CRM lookup");
+    const projectKey = this.config.meegleIdentity.projectKey;
+    const query = async (where: string): Promise<CustomerCrmCandidate[]> => {
+      const mql =
+        "SELECT `work_item_id`, `name`, `work_item_status` " +
+        `FROM \`${projectKey}\`.\`crm\` ` +
+        `WHERE \`archiving_date\` IS NULL AND ${where} LIMIT 10`;
+      const result = await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "query",
+          "--project-key",
+          projectKey,
+          "--mql",
+          mql,
+          "--format",
+          "json",
+        ],
+        true,
+      );
+      return customerCrmCandidates(JSON.parse(result.stdout) as unknown, projectKey);
+    };
+
+    let candidates: CustomerCrmCandidate[] = [];
+    let matchMethod: CustomerCrmResolution["matchMethod"] = "exact_name";
+    if (lookupHint && /^\d{6,30}$/u.test(lookupHint)) {
+      const byId = await query(`\`work_item_id\` = ${lookupHint}`);
+      if (byId.length === 1) {
+        const left = merchantName.replaceAll(/\s+/gu, "").toLocaleLowerCase();
+        const right = byId[0]!.name.replaceAll(/\s+/gu, "").toLocaleLowerCase();
+        if (left.includes(right) || right.includes(left)) {
+          candidates = byId;
+          matchMethod = "work_item_id";
+        }
+      }
+    }
+    if (!candidates.length) {
+      candidates = await query(`\`name\` = '${mqlString(merchantName)}'`);
+      matchMethod = "exact_name";
+    }
+    if (lookupHint && lookupHint.toLocaleLowerCase() !== merchantName.toLocaleLowerCase() && candidates.length !== 1) {
+      candidates = await query(
+        `(\`name\` LIKE '%${mqlLike(merchantName)}%' AND \`name\` LIKE '%${mqlLike(lookupHint)}%')`,
+      );
+      matchMethod = "name_and_hint";
+    }
+    if (!candidates.length) {
+      candidates = await query(`\`name\` LIKE '%${mqlLike(merchantName)}%'`);
+      matchMethod = "fuzzy_name";
+    }
+    return {
+      status: candidates.length === 1 ? "unique" : candidates.length ? "ambiguous" : "not_found",
+      query: { merchantName, ...(lookupHint ? { lookupHint } : {}) },
+      matchMethod,
+      candidates,
+      readOnly: true,
+    };
   }
 
   private profileFor(senderId: string): string {

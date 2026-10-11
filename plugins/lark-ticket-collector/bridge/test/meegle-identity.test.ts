@@ -69,6 +69,44 @@ test("recognizes only explicit Meegle authorization confirmations", () => {
   assert.equal(isMeegleAuthorizationConfirmation("请帮我创建工单"), false);
 });
 
+test("customer CRM lookup is read-only and uses the verified identity profile", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const calls: string[][] = [];
+  const runner: ProcessRunner = async (executable, args) => {
+    calls.push([executable, ...args]);
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        rows: [
+          {
+            work_item_id: "123456789",
+            name: "汪汪咖啡店",
+            work_item_status: "跟进中",
+          },
+        ],
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveCustomerCrm({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        merchantName: "汪汪咖啡店",
+      });
+    assert.equal(result.status, "unique");
+    assert.equal(result.readOnly, true);
+    assert.equal(result.candidates[0]?.workItemId, "123456789");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.[calls[0].indexOf("--profile") + 1], "lark-alice");
+    assert.ok(calls[0]?.includes("query"));
+    assert.ok(!calls[0]?.some((value) => /create|update|delete/u.test(value)));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("customer intake node owner is force-updated and read back with the verified profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   const calls: string[][] = [];

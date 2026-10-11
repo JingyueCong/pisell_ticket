@@ -50,6 +50,13 @@ const requestSchema = z
   })
   .strict();
 
+const crmResolveSchema = z
+  .object({
+    merchant_name: z.string().trim().min(1).max(300),
+    lookup_hint: z.string().trim().min(1).max(300).optional(),
+  })
+  .strict();
+
 export function parseInternalCustomerTicketRequest(
   value: unknown,
 ): InternalCustomerTicketRequest {
@@ -121,10 +128,17 @@ export function createBridgeHttpHandler(input: {
           internal_customer_service_api: Boolean(
             input.internalTicketService && input.internalToken,
           ),
+          internal_customer_crm_api: Boolean(
+            input.internalTicketService && input.internalToken,
+          ),
         });
         return;
       }
-      if (request.method !== "POST" || path !== "/internal/customer-service-tickets") {
+      const isTicketRequest =
+        request.method === "POST" && path === "/internal/customer-service-tickets";
+      const isCrmRequest =
+        request.method === "POST" && path === "/internal/customer-crm/resolve";
+      if (!isTicketRequest && !isCrmRequest) {
         sendJson(response, 404, { ok: false, error: "not_found" });
         return;
       }
@@ -146,6 +160,32 @@ export function createBridgeHttpHandler(input: {
         return;
       }
       try {
+        if (isCrmRequest) {
+          const parsed = crmResolveSchema.parse(await readJson(request));
+          const crm = await input.internalTicketService.resolveCustomerCrm({
+            merchantName: parsed.merchant_name,
+            ...(parsed.lookup_hint ? { lookupHint: parsed.lookup_hint } : {}),
+          });
+          sendJson(response, 200, {
+            ok: true,
+            crm: {
+              status: crm.status,
+              query: {
+                merchant_name: crm.query.merchantName,
+                ...(crm.query.lookupHint ? { lookup_hint: crm.query.lookupHint } : {}),
+              },
+              match_method: crm.matchMethod,
+              candidates: crm.candidates.map((candidate) => ({
+                work_item_id: candidate.workItemId,
+                name: candidate.name,
+                ...(candidate.status ? { status: candidate.status } : {}),
+                ...(candidate.url ? { url: candidate.url } : {}),
+              })),
+              read_only: true,
+            },
+          });
+          return;
+        }
         const ticketRequest = parseInternalCustomerTicketRequest(await readJson(request));
         const result = await input.internalTicketService.process(ticketRequest);
         sendJson(response, 200, {
@@ -165,10 +205,24 @@ export function createBridgeHttpHandler(input: {
           sendJson(response, 413, { ok: false, error: "request_body_too_large" });
           return;
         }
+        if (
+          isCrmRequest &&
+          error instanceof Error &&
+          error.message.startsWith("internal submitter identity is not authorized:")
+        ) {
+          sendJson(response, 409, {
+            ok: false,
+            error: "meegle_authorization_required",
+          });
+          return;
+        }
         logger.error("internal.api_failed", {
           error: error instanceof Error ? error.message : String(error),
         });
-        sendJson(response, 500, { ok: false, error: "ticket_agent_failed" });
+        sendJson(response, 500, {
+          ok: false,
+          error: isCrmRequest ? "crm_lookup_failed" : "ticket_agent_failed",
+        });
       }
     })().catch((error: unknown) => {
       logger.error("internal.http_unhandled", {

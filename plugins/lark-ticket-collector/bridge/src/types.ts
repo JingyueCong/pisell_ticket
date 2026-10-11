@@ -211,3 +211,21 @@ export interface InternalCustomerTicketResponse {
   ticketNumber: string;
   cached: boolean;
 }
+
+export interface CustomerCrmCandidate {
+  workItemId: string;
+  name: string;
+  status?: string;
+  url?: string;
+}
+
+export interface CustomerCrmResolution {
+  status: "unique" | "ambiguous" | "not_found";
+  query: {
+    merchantName: string;
+    lookupHint?: string;
+  };
+  matchMethod: "work_item_id" | "exact_name" | "name_and_hint" | "fuzzy_name";
+  candidates: CustomerCrmCandidate[];
+  readOnly: true;
+}
