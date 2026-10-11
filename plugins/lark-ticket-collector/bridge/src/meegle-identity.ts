@@ -480,9 +480,9 @@ export class MeegleIdentityManager {
     const projectKey = this.config.meegleIdentity.projectKey;
     const query = async (where: string): Promise<CustomerCrmCandidate[]> => {
       const mql =
-        "SELECT `work_item_id`, `name`, `work_item_status` " +
+        "SELECT `work_item_id`, `name` " +
         `FROM \`${projectKey}\`.\`${CUSTOMER_CRM_WORK_ITEM_TYPE}\` ` +
-        `WHERE \`archiving_date\` IS NULL AND ${where} LIMIT 10`;
+        `WHERE ${where} LIMIT 10`;
       const result = await this.meegle(
         input.identity.profile,
         [
