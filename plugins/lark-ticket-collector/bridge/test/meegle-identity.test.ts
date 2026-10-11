@@ -101,6 +101,10 @@ test("customer CRM lookup is read-only and uses the verified identity profile", 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.[calls[0].indexOf("--profile") + 1], "lark-alice");
     assert.ok(calls[0]?.includes("query"));
+    assert.match(
+      calls[0]?.[calls[0].indexOf("--mql") + 1] ?? "",
+      /67df84a32e42950cb0195cba/u,
+    );
     assert.ok(!calls[0]?.some((value) => /create|update|delete/u.test(value)));
   } finally {
     rmSync(directory, { recursive: true, force: true });

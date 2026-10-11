@@ -40,6 +40,8 @@ export interface CustomerNodeOwnerCorrection {
   ownerUserKey: string;
 }
 
+const CUSTOMER_CRM_WORK_ITEM_TYPE = "67df84a32e42950cb0195cba";
+
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
 }
@@ -479,7 +481,7 @@ export class MeegleIdentityManager {
     const query = async (where: string): Promise<CustomerCrmCandidate[]> => {
       const mql =
         "SELECT `work_item_id`, `name`, `work_item_status` " +
-        `FROM \`${projectKey}\`.\`crm\` ` +
+        `FROM \`${projectKey}\`.\`${CUSTOMER_CRM_WORK_ITEM_TYPE}\` ` +
         `WHERE \`archiving_date\` IS NULL AND ${where} LIMIT 10`;
       const result = await this.meegle(
         input.identity.profile,
