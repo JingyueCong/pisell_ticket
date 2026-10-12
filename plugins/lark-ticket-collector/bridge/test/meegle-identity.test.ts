@@ -364,6 +364,98 @@ test("customer intake owner readback retries brief API propagation lag", async (
   }
 });
 
+test("customer intake owner accepts localized generic node fields", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updateCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("get-node")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            nodes: [
+              {
+                name: "创建工单",
+                state_key: "started",
+                form_items: [
+                  {
+                    field_key: "field_owner_01",
+                    field_name: "负责人",
+                    field_value: [{ user_key: "meegle_alice", name: "Alice" }],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update-node")) updateCalls += 1;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureCustomerIntakeNodeOwner({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7130051159",
+      });
+    assert.deepEqual(result, { nodeId: "started", ownerUserKey: "meegle_alice" });
+    assert.equal(updateCalls, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("customer intake owner falls back to the canonical MQL node owner", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updateCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("get-node")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { nodes: [{ name: "创建工单", state_key: "started" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("query")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            rows: [
+              {
+                work_item_id: "7130051159",
+                "get_node_attribute('创建工单','负责人')": [
+                  { user_key: "meegle_alice", name: "Alice" },
+                ],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update-node")) updateCalls += 1;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureCustomerIntakeNodeOwner({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7130051159",
+      });
+    assert.deepEqual(result, { nodeId: "started", ownerUserKey: "meegle_alice" });
+    assert.equal(updateCalls, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("content producer is reduced to the one round-robin assignee and read back", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   const calls: string[][] = [];
@@ -492,6 +584,68 @@ test("content producer verification does not mutate an already-correct role", as
         workItemId: "7132735915",
         producerName: "Annie",
       });
+    assert.equal(updateCalls, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("content producer readback accepts generic field records and display names", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updateCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("meta-roles")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { roles: [{ role_key: "role_c17278", role_name: "制作人&交付人" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("search")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { users: [{ user_key: "user_joy", name: "Joy" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("query")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            rows: [
+              {
+                work_item_id: "7132856228",
+                fields: [
+                  {
+                    field_key: "role_c17278",
+                    field_name: "制作人 & 交付人",
+                    field_value: ["Joy"],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update")) updateCalls += 1;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureContentMaintenanceProducer({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7132856228",
+        producerName: "Joy",
+      });
+    assert.equal(result.producerUserKey, "user_joy");
     assert.equal(updateCalls, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });

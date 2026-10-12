@@ -42,7 +42,9 @@ export interface CustomerNodeOwnerCorrection {
 }
 
 const CUSTOMER_CRM_WORK_ITEM_TYPE = "67df84a32e42950cb0195cba";
+const CUSTOMER_SERVICE_WORK_ITEM_TYPE = "6886d47112cff2ae4ae279e3";
 const CONTENT_MAINTENANCE_WORK_ITEM_TYPE = "67df87a8baf45c9c247ba778";
+const OWNER_READBACK_DELAYS_MS = [0, 1_000, 2_000, 4_000, 8_000] as const;
 
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
@@ -225,10 +227,37 @@ function workflowNodeOwnerKeys(node: Record<string, unknown>): Set<string> {
   const objects: Array<Record<string, unknown>> = [];
   collectObjects(node, objects);
   for (const object of objects) {
-    const fieldKey = stringValue(object.field_key) ?? stringValue(object.fieldKey);
-    if (fieldKey === "owner") {
+    const descriptors = [
+      object.field_key,
+      object.fieldKey,
+      object.field_name,
+      object.fieldName,
+      object.name,
+      object.label,
+    ]
+      .map(scalarValue)
+      .filter((value): value is string => Boolean(value))
+      .map(normalized);
+    if (
+      descriptors.some((descriptor) =>
+        [
+          "owner",
+          "owners",
+          "nodeowner",
+          "nodeowners",
+          "负责人",
+          "当前负责人",
+          "创建工单负责人",
+        ].includes(descriptor) || descriptor.endsWith("负责人"),
+      )
+    ) {
       collectOwnerKeys(
-        object.field_value ?? object.fieldValue ?? object.value,
+        object.field_value ??
+          object.fieldValue ??
+          object.value ??
+          object.values ??
+          object.owners ??
+          object.node_owners,
         result,
       );
     }
@@ -319,17 +348,58 @@ function roleOwnerKeysFromQuery(
       .map(scalarValue)
       .some((value) => value === workItemId),
   );
-  const rows = matchingRows.length ? matchingRows : objects;
+  const rows: Array<Record<string, unknown>> = [];
+  if (matchingRows.length) {
+    for (const row of matchingRows) collectObjects(row, rows);
+  } else {
+    rows.push(...objects);
+  }
   const result = new Set<string>();
+  const normalizedRoleName = normalized(roleName);
+  const normalizedRoleKey = normalized(roleKey);
   for (const object of rows) {
     for (const [key, value] of Object.entries(object)) {
       if (
         key === roleKey ||
         key === roleName ||
         key === `__${roleName}` ||
-        key.includes(roleName)
+        key.includes(roleName) ||
+        normalized(key).includes(normalizedRoleName)
       ) {
         collectOwnerKeys(value, result);
+      }
+    }
+    const fieldDescriptors = [
+      object.field_key,
+      object.fieldKey,
+      object.field_name,
+      object.fieldName,
+      object.key,
+      object.name,
+      object.label,
+    ]
+      .map(scalarValue)
+      .filter((value): value is string => Boolean(value))
+      .map(normalized);
+    if (
+      fieldDescriptors.some(
+        (descriptor) =>
+          descriptor === normalizedRoleKey ||
+          descriptor === normalizedRoleName ||
+          descriptor.endsWith(normalizedRoleName),
+      )
+    ) {
+      for (const key of [
+        "field_value",
+        "fieldValue",
+        "values",
+        "value",
+        "owners",
+        "owner",
+        "user_keys",
+        "userKeys",
+      ]) {
+        if (Object.hasOwn(object, key)) collectOwnerKeys(object[key], result);
       }
     }
     const objectRoleKey =
@@ -347,6 +417,24 @@ function roleOwnerKeysFromQuery(
     }
   }
   return result;
+}
+
+function isExpectedSingleOwner(
+  owners: Set<string>,
+  expectedUserKey: string,
+  expectedName: string,
+): boolean {
+  if (owners.size !== 1) return false;
+  const actual = [...owners][0]!;
+  return actual === expectedUserKey || normalized(actual) === normalized(expectedName);
+}
+
+function removableOwnerKeys(owners: Set<string>, expectedUserKey: string): string[] {
+  return [...owners].filter(
+    (owner) =>
+      owner !== expectedUserKey &&
+      (/^\d{10,}$/u.test(owner) || /^(?:ou_|user_|u_)/u.test(owner)),
+  );
 }
 
 function mqlIdentifier(value: string): string {
@@ -529,13 +617,57 @@ export class MeegleIdentityManager {
       "--format",
       "json",
     ];
-    const current = await this.meegle(input.identity.profile, nodeQuery, true);
-    const node = findWorkflowNode(JSON.parse(current.stdout) as unknown, "创建工单");
+    const readNode = async (): Promise<{
+      node?: Record<string, unknown>;
+      owners: Set<string>;
+    }> => {
+      const current = await this.meegle(input.identity.profile, nodeQuery, true);
+      const node = findWorkflowNode(JSON.parse(current.stdout) as unknown, "创建工单");
+      const owners = node ? workflowNodeOwnerKeys(node) : new Set<string>();
+      if (owners.size) return { ...(node ? { node } : {}), owners };
+
+      const mql =
+        "SELECT `work_item_id`, get_node_attribute('创建工单','负责人') " +
+        `FROM \`${mqlIdentifier(this.config.meegleIdentity.projectKey)}\`.` +
+        `\`${CUSTOMER_SERVICE_WORK_ITEM_TYPE}\` ` +
+        `WHERE \`work_item_id\` = ${input.workItemId} LIMIT 1`;
+      const fallback = await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "query",
+          "--project-key",
+          this.config.meegleIdentity.projectKey,
+          "--mql",
+          mql,
+          "--format",
+          "json",
+        ],
+        true,
+      );
+      return {
+        ...(node ? { node } : {}),
+        owners: roleOwnerKeysFromQuery(
+          JSON.parse(fallback.stdout) as unknown,
+          input.workItemId,
+          "负责人",
+          "负责人",
+        ),
+      };
+    };
+
+    const current = await readNode();
+    const node = current.node;
     if (!node) throw new Error("Customer ticket intake node was not returned");
     const nodeId = workflowNodeId(node);
     if (!nodeId) throw new Error("Customer ticket intake node has no node id");
-    const currentOwners = workflowNodeOwnerKeys(node);
-    if (currentOwners.size === 1 && currentOwners.has(input.identity.userKey)) {
+    if (
+      isExpectedSingleOwner(
+        current.owners,
+        input.identity.userKey,
+        input.identity.name,
+      )
+    ) {
       return { nodeId, ownerUserKey: input.identity.userKey };
     }
 
@@ -558,26 +690,20 @@ export class MeegleIdentityManager {
     );
 
     let verifiedOwners = new Set<string>();
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (attempt > 0) await this.pause(500);
-      const verified = await this.meegle(input.identity.profile, nodeQuery, true);
-      const verifiedNode = findWorkflowNode(
-        JSON.parse(verified.stdout) as unknown,
-        "创建工单",
-      );
-      verifiedOwners = verifiedNode
-        ? workflowNodeOwnerKeys(verifiedNode)
-        : new Set<string>();
-      if (
-        verifiedNode &&
-        verifiedOwners.size === 1 &&
-        verifiedOwners.has(input.identity.userKey)
-      ) {
+    for (const delayMs of OWNER_READBACK_DELAYS_MS) {
+      if (delayMs > 0) await this.pause(delayMs);
+      const verified = await readNode();
+      verifiedOwners = verified.owners;
+      if (isExpectedSingleOwner(
+        verifiedOwners,
+        input.identity.userKey,
+        input.identity.name,
+      )) {
         return { nodeId, ownerUserKey: input.identity.userKey };
       }
     }
     throw new Error(
-      `Customer ticket intake node owner verification failed after 5 reads ` +
+      `Customer ticket intake node owner verification failed after ${OWNER_READBACK_DELAYS_MS.length} reads ` +
         `(expected=${input.identity.userKey}, actual=${[...verifiedOwners].join(",") || "none"})`,
     );
   }
@@ -662,10 +788,9 @@ export class MeegleIdentityManager {
     };
 
     const currentOwners = await query();
-    if (!(currentOwners.size === 1 && currentOwners.has(producerUserKey))) {
+    if (!isExpectedSingleOwner(currentOwners, producerUserKey, input.producerName)) {
       const roleOperate = [
-        ...[...currentOwners]
-          .filter((userKey) => userKey !== producerUserKey)
+        ...removableOwnerKeys(currentOwners, producerUserKey)
           .map((userKey) => ({ op: "remove", role_key: roleKey, user_keys: [userKey] })),
         ...(!currentOwners.has(producerUserKey)
           ? [{ op: "add", role_key: roleKey, user_keys: [producerUserKey] }]
@@ -693,15 +818,19 @@ export class MeegleIdentityManager {
     }
 
     let verifiedOwners = currentOwners;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (attempt > 0) await this.pause(500);
+    for (const delayMs of OWNER_READBACK_DELAYS_MS) {
+      if (delayMs > 0) await this.pause(delayMs);
       verifiedOwners = await query();
-      if (verifiedOwners.size === 1 && verifiedOwners.has(producerUserKey)) {
+      if (isExpectedSingleOwner(
+        verifiedOwners,
+        producerUserKey,
+        input.producerName,
+      )) {
         return assignment;
       }
     }
     throw new Error(
-      `Content producer verification failed after 5 reads ` +
+      `Content producer verification failed after ${OWNER_READBACK_DELAYS_MS.length} reads ` +
         `(expected=${producerUserKey}, actual=${[...verifiedOwners].join(",") || "none"})`,
     );
   }
