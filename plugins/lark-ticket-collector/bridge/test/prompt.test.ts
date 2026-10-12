@@ -56,6 +56,8 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /可信入口路由策略/);
   assert.match(prompt, /mode: customer_bundle/);
   assert.match(prompt, /authoritative: true/);
+  assert.match(prompt, /明确写出的 T1\/T2\/T3\/T4\/T5 是最高优先级目标/);
+  assert.match(prompt, /创建内容工单并关联 T2 工单.*客服 \+ T2 阻断配套/);
   assert.match(prompt, /创建内容维护工单.*默认表示客服工单 \+ T3 内容维护配套/);
   assert.match(prompt, /只有员工明确说“单独\/独立\/仅\/只创建内容维护工单或内容工单”/);
   assert.match(prompt, /客服外向关联已回读验证/);

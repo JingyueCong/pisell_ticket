@@ -6,12 +6,6 @@ const NON_CREATE_CONTEXT =
   /^(?:请)?(?:帮我)?(?:查询|查看|更新|修改|补充|关联|关闭|取消|删除|解释|检查)|(?:^|[\s：:])(?:为什么|怎么|如何|是否|能否|能不能|可不可以)(?:[^，。\n]{0,20})(?:创建|新建|工单)|(?:已经|已|刚刚|刚才|之前)创建/u;
 const STANDALONE_MODIFIER = /(?:单独|独立|仅|只)(?:需要|要|想|给我|帮我)?(?:创建|新建|提交|开|建)/u;
 
-const T1 = /(?:^|[^a-z0-9])t\s*1(?:[^a-z0-9]|$)|核心阻断/u;
-const T2 = /(?:^|[^a-z0-9])t\s*2(?:[^a-z0-9]|$)|非核心阻断/u;
-const T3 = /(?:^|[^a-z0-9])t\s*3(?:[^a-z0-9]|$)/u;
-const T4 = /(?:^|[^a-z0-9])t\s*4(?:[^a-z0-9]|$)/u;
-const T5 = /(?:^|[^a-z0-9])t\s*5(?:[^a-z0-9]|$)/u;
-
 const CONTENT_MAINTENANCE = /内容维护|内容制作|内容工单|代制作/u;
 const DEMAND_POOL = /需求池|功能建议|功能改进/u;
 const CUSTOMER_CARD_MACHINE = /客户刷卡机|刷卡机申请|刷卡机(?:工单|工作项)/u;
@@ -23,6 +17,42 @@ const VISIT_RECORD = /上门服务|现场记录|会议记录|录音工单/u;
 
 const OTHER_EXPLICIT_TYPES =
   /开发进度|产品功能|客户管理\s*crm|\bcrm\b|商机跟进|版本迭代|验收记录|预工单|硬件库|组件开发|数据基建/iu;
+
+type ExplicitTier = 1 | 2 | 3 | 4 | 5;
+
+/**
+ * Resolve an explicitly named T-level before considering broad aliases such as
+ * "内容工单".  A negated/replaced level is ignored, so "不用 T2，改 T3"
+ * selects T3 while "创建内容工单并关联 T2 工单" selects T2.
+ */
+function explicitTierTarget(text: string): ExplicitTier | undefined {
+  const candidates: Array<{ tier: ExplicitTier; index: number }> = [];
+  for (const match of text.matchAll(/t\s*([1-5])/giu)) {
+    const index = match.index ?? 0;
+    const previousCharacter = index > 0 ? (text[index - 1] ?? "") : "";
+    const nextCharacter = text[index + match[0].length] ?? "";
+    if (/[a-z0-9]/iu.test(previousCharacter) || /[a-z0-9]/iu.test(nextCharacter)) {
+      continue;
+    }
+    const before = text.slice(Math.max(0, index - 18), index);
+    const after = text.slice(index + match[0].length, index + match[0].length + 18);
+    const directlyNegated =
+      /(?:不用|不要|无需|不需要|不是|取消|放弃|排除)\s*(?:原来(?:的)?|原)?\s*$/u.test(
+        before,
+      );
+    const replacedByAnotherTarget =
+      /^\s*(?:工单)?\s*(?:改成|改为|换成|换为|改建成?|改做)/u.test(after);
+    const tier = match[1];
+    if (tier && !directlyNegated && !replacedByAnotherTarget) {
+      candidates.push({ tier: Number(tier) as ExplicitTier, index });
+    }
+  }
+  const explicit = candidates.at(-1)?.tier;
+  if (explicit) return explicit;
+  if (/非核心阻断/u.test(text)) return 2;
+  if (/核心阻断/u.test(text)) return 1;
+  return undefined;
+}
 
 function standaloneRequested(text: string): boolean {
   return (
@@ -81,6 +111,46 @@ export function deriveIntakeRoutePolicy(content: string): IntakeRoutePolicy {
   }
 
   const explicitStandalone = standaloneRequested(text);
+  const explicitTier = explicitTierTarget(text);
+
+  // Explicit T-levels are more specific than generic business wording in the
+  // same sentence. This prevents "内容工单并关联 T2" from being routed to T3.
+  if (explicitTier === 3) {
+    return explicitStandalone
+      ? standalonePolicy("content_maintenance", "explicit_standalone_t3_target")
+      : bundlePolicy(
+          "T3客户代运营请求-内容维护",
+          "content_maintenance",
+          "t3_creation_alias",
+        );
+  }
+  if (explicitTier === 2) {
+    return explicitStandalone
+      ? standalonePolicy("blocking_issue", "explicit_standalone_t2_target")
+      : bundlePolicy(
+          "T2非核心阻断性问题类流转升级",
+          "blocking_issue",
+          "t2_creation_alias",
+        );
+  }
+  if (explicitTier === 1) {
+    return explicitStandalone
+      ? standalonePolicy("blocking_issue", "explicit_standalone_t1_target")
+      : bundlePolicy("T1核心阻断性问题", "blocking_issue", "t1_creation_alias");
+  }
+  if (explicitTier === 5) {
+    return explicitStandalone
+      ? standalonePolicy("demand_pool", "explicit_standalone_demand_pool")
+      : bundlePolicy("T5功能建议/改进类-需求", "demand_pool", "t5_creation_alias");
+  }
+  if (explicitTier === 4) {
+    return {
+      mode: "customer_only",
+      authoritative: true,
+      customerIssueOption: "T4流转商务类",
+      reason: "t4_creation_alias",
+    };
+  }
 
   if (CONTENT_MAINTENANCE.test(text)) {
     return explicitStandalone
@@ -91,41 +161,17 @@ export function deriveIntakeRoutePolicy(content: string): IntakeRoutePolicy {
           "content_maintenance_creation_alias_defaults_to_customer_bundle",
         );
   }
-  if (T3.test(text)) {
-    return explicitStandalone
-      ? standalonePolicy("content_maintenance", "explicit_standalone_t3_target")
-      : bundlePolicy(
-          "T3客户代运营请求-内容维护",
-          "content_maintenance",
-          "t3_creation_alias",
-        );
-  }
-
-  if (T2.test(text)) {
-    return explicitStandalone
-      ? standalonePolicy("blocking_issue", "explicit_standalone_t2_target")
-      : bundlePolicy(
-          "T2非核心阻断性问题类流转升级",
-          "blocking_issue",
-          "t2_creation_alias",
-        );
-  }
-  if (T1.test(text)) {
-    return explicitStandalone
-      ? standalonePolicy("blocking_issue", "explicit_standalone_t1_target")
-      : bundlePolicy("T1核心阻断性问题", "blocking_issue", "t1_creation_alias");
-  }
   if (BLOCKING_STANDALONE.test(text)) {
     return standalonePolicy("blocking_issue", "explicit_blocking_issue_type");
   }
 
-  if (T5.test(text) || DEMAND_POOL.test(text)) {
+  if (DEMAND_POOL.test(text)) {
     return explicitStandalone
       ? standalonePolicy("demand_pool", "explicit_standalone_demand_pool")
       : bundlePolicy(
           "T5功能建议/改进类-需求",
           "demand_pool",
-          T5.test(text) ? "t5_creation_alias" : "demand_creation_alias_defaults_to_customer_bundle",
+          "demand_creation_alias_defaults_to_customer_bundle",
         );
   }
 
@@ -149,12 +195,11 @@ export function deriveIntakeRoutePolicy(content: string): IntakeRoutePolicy {
         );
   }
 
-  if (T4.test(text) || CUSTOMER_ONLY.test(text)) {
+  if (CUSTOMER_ONLY.test(text)) {
     return {
       mode: "customer_only",
       authoritative: true,
-      ...(T4.test(text) ? { customerIssueOption: "T4流转商务类" } : {}),
-      reason: T4.test(text) ? "t4_creation_alias" : "customer_only_issue_alias",
+      reason: "customer_only_issue_alias",
     };
   }
 

@@ -32,6 +32,33 @@ test("content-ticket wording stays locked to T3 despite diagnostic language", ()
   });
 });
 
+test("an explicit T2 target overrides generic content-ticket wording", () => {
+  const route = deriveIntakeRoutePolicy(
+    "创建一个内容工单并关联T2工单 商家名称 NEW Doncaster Cellar 标题：商家想要对接熊猫外卖",
+  );
+  assert.deepEqual(route, {
+    mode: "customer_bundle",
+    authoritative: true,
+    customerIssueOption: "T2非核心阻断性问题类流转升级",
+    pairedWorkItemType: "blocking_issue",
+    reason: "t2_creation_alias",
+  });
+});
+
+test("negated or replaced tiers do not override the requested replacement", () => {
+  const cases = [
+    ["不用T2工单，建立T3内容工单即可", "T3客户代运营请求-内容维护"],
+    ["不要 T3，改建 T2 工单", "T2非核心阻断性问题类流转升级"],
+    ["把 T2 工单改成新建 T3 内容维护工单", "T3客户代运营请求-内容维护"],
+    ["把 T3 工单换为新建 T2 工单", "T2非核心阻断性问题类流转升级"],
+  ] as const;
+  for (const [input, option] of cases) {
+    const route = deriveIntakeRoutePolicy(input);
+    assert.equal(route.mode, "customer_bundle", input);
+    assert.equal(route.customerIssueOption, option, input);
+  }
+});
+
 test("content maintenance is standalone only when the employee says so explicitly", () => {
   for (const input of [
     "单独创建内容维护工单",

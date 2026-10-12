@@ -452,6 +452,25 @@ export class LarkTicketService {
       );
       this.store.recordOperation({
         messageId: message.messageId,
+        step: "intake_route_resolved",
+        status: "succeeded",
+        detail: {
+          mode: envelope.routePolicy?.mode ?? "unspecified",
+          authoritative: envelope.routePolicy?.authoritative ?? false,
+          reason: envelope.routePolicy?.reason ?? "not_available",
+          ...(envelope.routePolicy?.customerIssueOption
+            ? { customerIssueOption: envelope.routePolicy.customerIssueOption }
+            : {}),
+          ...(envelope.routePolicy?.pairedWorkItemType
+            ? { pairedWorkItemType: envelope.routePolicy.pairedWorkItemType }
+            : {}),
+          ...(envelope.routePolicy?.standaloneWorkItemType
+            ? { standaloneWorkItemType: envelope.routePolicy.standaloneWorkItemType }
+            : {}),
+        },
+      });
+      this.store.recordOperation({
+        messageId: message.messageId,
         step: "agent_execution",
         status: "started",
       });
