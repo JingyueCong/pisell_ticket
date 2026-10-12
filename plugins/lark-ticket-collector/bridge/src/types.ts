@@ -48,9 +48,14 @@ export interface ContentMaintenanceProducerSource {
   producerRoster?: string[];
   confirmerNames: string[];
   confirmerRoleName?: string;
-  selectionMode?: "all" | "round_robin_single";
+  selectionMode?: "all" | "round_robin_single" | "explicit_single";
   fetchedAt: number;
   error?: string;
+}
+
+export interface ContentProducerSelection {
+  producerName: string;
+  source: "employee_text" | "attachment_evidence" | "trusted_default";
 }
 
 export interface ContentProducerAssignment {
@@ -145,6 +150,7 @@ export interface AgentResult {
   draft: DraftMemoryUpdate;
   workItemOutcomes: WorkItemOutcome[];
   attachmentArchive: AttachmentArchiveReport;
+  contentProducerSelection?: ContentProducerSelection;
   commandEvidence?: AgentCommandEvidence[];
   diagnostics: string[];
 }

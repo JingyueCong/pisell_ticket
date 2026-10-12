@@ -37,6 +37,10 @@ import {
 } from "./meegle-identity.js";
 import { MeegleAttachmentArchiver } from "./meegle-attachment-archiver.js";
 import { parseConfirmerNames, parseProducerNames } from "./producer-source.js";
+import {
+  resolveExplicitProducer,
+  resolveTrustedProducerSelection,
+} from "./producer-assignment.js";
 import { conversationKey } from "./prompt.js";
 import { BridgeStore } from "./store.js";
 import type {
@@ -426,7 +430,10 @@ export class LarkTicketService {
           : undefined;
       const [resources, producerSource, visitRecord] = await Promise.all([
         this.downloadResources(message),
-        this.readContentMaintenanceProducerSource(producerRotationKey),
+        this.readContentMaintenanceProducerSource(
+          producerRotationKey,
+          message.content,
+        ),
         automaticVisitRecord
           ? this.readVisitRecord(message)
           : Promise.resolve(undefined),
@@ -528,6 +535,64 @@ export class LarkTicketService {
           : {}),
         resourceRoot: this.config.storage.resourceDir,
       });
+      let producerSelectionError =
+        envelope.contentMaintenanceProducerSource?.error;
+      const trustedProducerSelection = resolveTrustedProducerSelection({
+        ...(envelope.contentMaintenanceProducerSource
+          ? { source: envelope.contentMaintenanceProducerSource }
+          : {}),
+        ...(rawResult.contentProducerSelection
+          ? { reported: rawResult.contentProducerSelection }
+          : {}),
+      });
+      if (trustedProducerSelection.error) {
+        producerSelectionError = trustedProducerSelection.error;
+        if (envelope.contentMaintenanceProducerSource) {
+          envelope.contentMaintenanceProducerSource = {
+            ...envelope.contentMaintenanceProducerSource,
+            producerNames: [],
+            selectionMode: "all",
+            error: trustedProducerSelection.error,
+          };
+        }
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "content_producer_selection",
+          status: "failed",
+          detail: { error: trustedProducerSelection.error.slice(0, 1_000) },
+        });
+      } else if (
+        trustedProducerSelection.producerName &&
+        trustedProducerSelection.selectionMode &&
+        envelope.contentMaintenanceProducerSource
+      ) {
+        if (
+          producerRotationKey &&
+          trustedProducerSelection.selectionMode === "explicit_single"
+        ) {
+          this.store.assignNextProducer({
+            sourceChatId: envelope.contentMaintenanceProducerSource.chatId,
+            conversationKey: producerRotationKey,
+            producerNames:
+              envelope.contentMaintenanceProducerSource.producerRoster ?? [],
+            explicitProducerName: trustedProducerSelection.producerName,
+          });
+        }
+        envelope.contentMaintenanceProducerSource = {
+          ...envelope.contentMaintenanceProducerSource,
+          producerNames: [trustedProducerSelection.producerName],
+          selectionMode: trustedProducerSelection.selectionMode,
+        };
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "content_producer_selection",
+          status: "succeeded",
+          detail: {
+            producerName: trustedProducerSelection.producerName,
+            selectionMode: trustedProducerSelection.selectionMode,
+          },
+        });
+      }
       const allResources = [
         ...(activeDraft?.resources ?? []),
         ...envelope.resources,
@@ -722,7 +787,8 @@ export class LarkTicketService {
       }
       const verificationProducerSource = envelope.contentMaintenanceProducerSource;
       const selectedProducer =
-        verificationProducerSource?.selectionMode === "round_robin_single" &&
+        (verificationProducerSource?.selectionMode === "round_robin_single" ||
+          verificationProducerSource?.selectionMode === "explicit_single") &&
         verificationProducerSource.producerNames.length === 1
           ? verificationProducerSource.producerNames[0]
           : undefined;
@@ -731,6 +797,13 @@ export class LarkTicketService {
         envelope.routePolicy,
         Boolean(selectedProducer),
       );
+      if (contentWorkItemId && producerSelectionError) {
+        resultText = [
+          resultText,
+          "",
+          "注意：工单已保留，但本轮明确制作人未通过可信轮班名单校验；请管理员校正“制作人&交付人”，不要重复建单。",
+        ].join("\n");
+      }
       if (
         contentWorkItemId &&
         selectedProducer &&
@@ -1009,6 +1082,7 @@ export class LarkTicketService {
 
   private async readContentMaintenanceProducerSource(
     rotationConversationKey?: string,
+    employeeMessage = "",
   ): Promise<
     ContentMaintenanceProducerSource | undefined
   > {
@@ -1030,11 +1104,28 @@ export class LarkTicketService {
       }
       const producerRoster = parseProducerNames(chatName, source);
       const confirmerNames = parseConfirmerNames(chatName, source);
+      const explicitProducer = resolveExplicitProducer(
+        employeeMessage,
+        producerRoster,
+      );
+      if (explicitProducer.error) {
+        return {
+          ...base,
+          chatName,
+          producerRoster,
+          confirmerNames,
+          selectionMode: "all",
+          error: explicitProducer.error,
+        };
+      }
       const selectedProducer = rotationConversationKey
         ? this.store.assignNextProducer({
             sourceChatId: source.chatId,
             conversationKey: rotationConversationKey,
             producerNames: producerRoster,
+            ...(explicitProducer.producerName
+              ? { explicitProducerName: explicitProducer.producerName }
+              : {}),
           })
         : undefined;
       return {
@@ -1043,7 +1134,11 @@ export class LarkTicketService {
         producerNames: selectedProducer ? [selectedProducer] : producerRoster,
         producerRoster,
         confirmerNames,
-        selectionMode: selectedProducer ? "round_robin_single" : "all",
+        selectionMode: selectedProducer
+          ? explicitProducer.producerName
+            ? "explicit_single"
+            : "round_robin_single"
+          : "all",
       };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

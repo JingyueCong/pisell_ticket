@@ -500,3 +500,61 @@ test("producer rotation continues after the bridge store restarts", () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("explicit producer assignment is sticky and does not advance rotation", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  const input = {
+    sourceChatId: "oc_producers",
+    producerNames: ["Annie", "Penn", "Joy"],
+  };
+  try {
+    assert.equal(
+      store.assignNextProducer({
+        ...input,
+        conversationKey: "explicit_draft",
+        explicitProducerName: "penn",
+        now: 1,
+      }),
+      "Penn",
+    );
+    assert.equal(
+      store.assignNextProducer({
+        ...input,
+        conversationKey: "explicit_draft",
+        now: 2,
+      }),
+      "Penn",
+      "a later follow-up keeps the explicit producer",
+    );
+    assert.equal(
+      store.assignNextProducer({
+        ...input,
+        conversationKey: "rotated_draft",
+        now: 3,
+      }),
+      "Annie",
+      "an explicit assignment must not consume the next rotation slot",
+    );
+    assert.equal(
+      store.assignNextProducer({
+        ...input,
+        conversationKey: "explicit_draft",
+        explicitProducerName: "Joy",
+        now: 4,
+      }),
+      "Joy",
+      "a later explicit correction replaces the sticky assignment",
+    );
+    assert.throws(() =>
+      store.assignNextProducer({
+        ...input,
+        conversationKey: "invalid_draft",
+        explicitProducerName: "Unknown",
+      }),
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

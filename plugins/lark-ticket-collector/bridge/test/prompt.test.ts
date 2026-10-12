@@ -105,13 +105,14 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /不得调用 `workflow update-node`/);
   assert.match(prompt, /可信内容维护制作人来源/);
   assert.match(prompt, /producer_names: Annie/);
-  assert.match(prompt, /producer_roster_size: 2/);
-  assert.doesNotMatch(prompt, /producer_roster: Annie \/ Jane/);
+  assert.match(prompt, /producer_roster: Annie \/ Jane/);
   assert.match(prompt, /confirmer_names: Kiddy/);
   assert.match(prompt, /confirmer_role_name: 确认人/);
   assert.match(prompt, /selection_mode: round_robin_single/);
-  assert.match(prompt, /必须只解析并写入这一人到“制作人&交付人”/);
-  assert.match(prompt, /完整轮班名单不会提供给 Agent/);
+  assert.match(prompt, /明确指派优先于轮班/);
+  assert.match(prompt, /source=attachment_evidence/);
+  assert.match(prompt, /没有明确指派时/);
+  assert.match(prompt, /content_producer_selection 必须为 null/);
   assert.match(prompt, /Bridge 会在创建后再次强制校验/);
   assert.match(prompt, /不得再次向员工索取制作人/);
   assert.match(prompt, /自动填写“是否需要确认人确认”/);

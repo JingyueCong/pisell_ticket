@@ -195,6 +195,7 @@ test("agent output schema requires a user reply and structured draft state", () 
     "draft",
     "work_item_outcomes",
     "attachment_archive",
+    "content_producer_selection",
   ]);
   assert.deepEqual(AGENT_OUTPUT_SCHEMA.properties.draft.properties.action.enum, [
     "none",
@@ -224,6 +225,10 @@ test("structured agent output separates the employee reply from draft memory", (
           targets: [],
           note: null,
         },
+        content_producer_selection: {
+          producer_name: "Penn",
+          source: "attachment_evidence",
+        },
       }),
     ),
     {
@@ -241,6 +246,10 @@ test("structured agent output separates the employee reply from draft memory", (
         expectedBindings: 0,
         verifiedBindings: 0,
         targets: [],
+      },
+      contentProducerSelection: {
+        producerName: "Penn",
+        source: "attachment_evidence",
       },
     },
   );

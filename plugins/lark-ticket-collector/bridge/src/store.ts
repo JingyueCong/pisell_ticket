@@ -312,12 +312,22 @@ export class BridgeStore {
     sourceChatId: string;
     conversationKey: string;
     producerNames: string[];
+    explicitProducerName?: string;
     now?: number;
   }): string | undefined {
     const roster = [
       ...new Set(input.producerNames.map((name) => name.trim()).filter(Boolean)),
     ];
     if (!roster.length) return undefined;
+    const explicitProducer = input.explicitProducerName
+      ? roster.find(
+          (name) =>
+            name.toLocaleLowerCase() === input.explicitProducerName?.trim().toLocaleLowerCase(),
+        )
+      : undefined;
+    if (input.explicitProducerName && !explicitProducer) {
+      throw new Error("Explicit producer must belong to the trusted roster");
+    }
     const rosterJson = JSON.stringify(roster);
     const now = input.now ?? Date.now();
 
@@ -331,6 +341,28 @@ export class BridgeStore {
         .get(input.conversationKey) as
         | { producer_name: string; source_chat_id: string; roster_json: string }
         | undefined;
+      if (explicitProducer) {
+        this.db
+          .prepare(`
+            INSERT INTO producer_assignments (
+              conversation_key, source_chat_id, roster_json, producer_name, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(conversation_key) DO UPDATE SET
+              source_chat_id = excluded.source_chat_id,
+              roster_json = excluded.roster_json,
+              producer_name = excluded.producer_name,
+              updated_at = excluded.updated_at
+          `)
+          .run(
+            input.conversationKey,
+            input.sourceChatId,
+            rosterJson,
+            explicitProducer,
+            now,
+            now,
+          );
+        return explicitProducer;
+      }
       if (
         existing?.source_chat_id === input.sourceChatId &&
         roster.includes(existing.producer_name)

@@ -59,7 +59,13 @@ export function isCodexRuntimeCompatibilityFailure(stderr: string): boolean {
 export const AGENT_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "draft", "work_item_outcomes", "attachment_archive"],
+  required: [
+    "reply",
+    "draft",
+    "work_item_outcomes",
+    "attachment_archive",
+    "content_producer_selection",
+  ],
   properties: {
     reply: { type: "string", minLength: 1 },
     draft: {
@@ -131,6 +137,18 @@ export const AGENT_OUTPUT_SCHEMA = {
         note: { type: ["string", "null"] },
       },
     },
+    content_producer_selection: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: ["producer_name", "source"],
+      properties: {
+        producer_name: { type: "string", minLength: 1 },
+        source: {
+          type: "string",
+          enum: ["employee_text", "attachment_evidence", "trusted_default"],
+        },
+      },
+    },
   },
 } as const;
 
@@ -188,11 +206,24 @@ const agentOutput = z.object({
       .max(50),
     note: z.string().nullable(),
   }),
+  content_producer_selection: z
+    .object({
+      producer_name: z.string().min(1),
+      source: z.enum(["employee_text", "attachment_evidence", "trusted_default"]),
+    })
+    .nullable(),
 });
 
 export function parseAgentOutput(
   rawOutput: string,
-): Pick<AgentResult, "text" | "draft" | "workItemOutcomes" | "attachmentArchive"> {
+): Pick<
+  AgentResult,
+  | "text"
+  | "draft"
+  | "workItemOutcomes"
+  | "attachmentArchive"
+  | "contentProducerSelection"
+> {
   const parsed = agentOutput.parse(JSON.parse(rawOutput));
   return {
     text: parsed.reply.trim(),
@@ -224,6 +255,14 @@ export function parseAgentOutput(
         ? { note: parsed.attachment_archive.note.trim() }
         : {}),
     },
+    ...(parsed.content_producer_selection
+      ? {
+          contentProducerSelection: {
+            producerName: parsed.content_producer_selection.producer_name.trim(),
+            source: parsed.content_producer_selection.source,
+          },
+        }
+      : {}),
   };
 }
 
