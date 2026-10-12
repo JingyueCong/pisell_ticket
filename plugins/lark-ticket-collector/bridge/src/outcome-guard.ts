@@ -1,5 +1,6 @@
 import type {
   AgentResult,
+  CustomerCrmCandidate,
   DraftSnapshot,
   InboundEnvelope,
   StoredMessage,
@@ -132,8 +133,31 @@ function clarificationLine(field: string): string {
   return `${field}：请补充该信息。`;
 }
 
-function clarificationText(fields: string[]): string {
+function candidateSelectionText(candidates: CustomerCrmCandidate[]): string[] {
+  return [
+    "客户/店铺：CRM 找到多个候选，请选择一个：",
+    ...candidates.map(
+      (candidate, index) =>
+        `${index + 1}. ${candidate.name}（CRM #${candidate.workItemId}）`,
+    ),
+    "可回复“第一个/第二个”、候选名称中的区别词，或 CRM ID。",
+  ];
+}
+
+function clarificationText(
+  fields: string[],
+  customerCandidates: CustomerCrmCandidate[] = [],
+): string {
+  const hasAmbiguousCustomer =
+    fields.includes("客户/店铺") && customerCandidates.length > 1;
   if (fields.length === 1) {
+    if (hasAmbiguousCustomer) {
+      return [
+        "当前草稿尚未提交，已保留已有文字和附件。",
+        ...candidateSelectionText(customerCandidates),
+        "选择后会继续处理当前草稿，不会从头重复建单。",
+      ].join("\n\n");
+    }
     return [
       "当前草稿尚未提交，已保留已有文字和附件。",
       `请补充${clarificationLine(fields[0]!)}`,
@@ -143,7 +167,13 @@ function clarificationText(fields: string[]): string {
   return [
     "当前草稿尚未提交，已保留已有文字和附件。",
     "请一次性补充以下信息：",
-    ...fields.map((field) => `- ${clarificationLine(field)}`),
+    ...fields.flatMap((field) =>
+      field === "客户/店铺" && hasAmbiguousCustomer
+        ? candidateSelectionText(customerCandidates).map((line, index) =>
+            index === 0 ? `- ${line}` : `  ${line}`,
+          )
+        : [`- ${clarificationLine(field)}`],
+    ),
     "补充后会继续处理当前草稿，不会从头重复建单。",
   ].join("\n");
 }
@@ -152,6 +182,8 @@ export function enforceDeterministicOutcome(input: {
   envelope: InboundEnvelope;
   history: StoredMessage[];
   activeDraft?: DraftSnapshot;
+  customerCandidates?: CustomerCrmCandidate[];
+  selectedCustomerCandidate?: CustomerCrmCandidate;
   result: AgentResult;
 }): OutcomeGuardResult {
   const committed = input.result.workItemOutcomes.some(
@@ -162,6 +194,9 @@ export function enforceDeterministicOutcome(input: {
   }
 
   let missingFields = canonicalMissingFields(input.result.draft.missingFields);
+  if (input.selectedCustomerCandidate) {
+    missingFields = missingFields.filter((field) => field !== "客户/店铺");
+  }
   const customerDraft = isCustomerDraft(input);
   const evidence = userEvidence(input);
   if (customerDraft && !KNOWN_PROBLEM_SOURCE.test(evidence)) {
@@ -174,7 +209,7 @@ export function enforceDeterministicOutcome(input: {
   }
 
   if (missingFields.length > 0) {
-    const text = clarificationText(missingFields);
+    const text = clarificationText(missingFields, input.customerCandidates);
     return {
       result: {
         ...input.result,

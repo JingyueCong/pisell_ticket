@@ -103,6 +103,64 @@ test("first pass asks for source together with model-detected missing fields", (
   assert.match(guarded.result.text, /问题来源/);
 });
 
+test("ambiguous CRM candidates are listed instead of asking for the store again", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "店铺 ID 8793" },
+    history: [],
+    activeDraft: {
+      ...activeDraft,
+      summary: "T3 域名设置检查；店铺 ID 8793；CRM 匹配到两个候选",
+      missingFields: ["客户/店铺"],
+      workItemIds: ["6416657899", "6168016739"],
+    },
+    customerCandidates: [
+      { workItemId: "6416657899", name: "8793 🌺Basic + sexycloakroom（AU）" },
+      { workItemId: "6168016739", name: "8793 SexyCloakRoomSYD" },
+    ],
+    result: result({
+      text: "请提供客户名称、店铺名称或店铺 ID。",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: "T3 域名设置检查；店铺 ID 8793；CRM 匹配到两个候选",
+        missingFields: ["客户/店铺"],
+        workItemIds: ["6416657899", "6168016739"],
+      },
+    }),
+  });
+
+  assert.equal(guarded.reason, "missing_fields");
+  assert.match(guarded.result.text, /8793 🌺Basic \+ sexycloakroom（AU）/u);
+  assert.match(guarded.result.text, /8793 SexyCloakRoomSYD/u);
+  assert.match(guarded.result.text, /第一个\/第二个/u);
+  assert.doesNotMatch(guarded.result.text, /请提供客户名称、店铺名称或店铺 ID/u);
+});
+
+test("a deterministic CRM selection clears the generic customer missing field", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "SYD" },
+    history: [],
+    activeDraft,
+    selectedCustomerCandidate: {
+      workItemId: "6168016739",
+      name: "8793 SexyCloakRoomSYD",
+    },
+    result: result({
+      text: "继续处理",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: "已选择 8793 SexyCloakRoomSYD",
+        missingFields: ["客户/店铺"],
+        workItemIds: ["6168016739"],
+      },
+    }),
+  });
+
+  assert.deepEqual(guarded.result.draft.missingFields, ["问题来源"]);
+  assert.doesNotMatch(guarded.result.text, /客户\/店铺/u);
+});
+
 test("a claimed interface failure without broker evidence is not presented as fact", () => {
   const guarded = enforceDeterministicOutcome({
     envelope: { ...envelope, content: "继续提交" },

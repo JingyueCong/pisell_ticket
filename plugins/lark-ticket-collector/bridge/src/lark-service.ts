@@ -24,6 +24,11 @@ import {
 } from "./draft-continuation.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
+import {
+  applyCustomerCandidateSelection,
+  draftNeedsCustomerResolution,
+  selectCustomerCandidate,
+} from "./customer-candidates.js";
 import { logger } from "./logger.js";
 import { enforceDeterministicOutcome } from "./outcome-guard.js";
 import {
@@ -37,6 +42,7 @@ import { BridgeStore } from "./store.js";
 import type {
   AgentBackend,
   ContentMaintenanceProducerSource,
+  CustomerCrmCandidate,
   DownloadedResource,
   InboundEnvelope,
   MeegleRequestIdentity,
@@ -469,6 +475,38 @@ export class LarkTicketService {
             : {}),
         },
       });
+      let customerCandidates: CustomerCrmCandidate[] = [];
+      let selectedCustomerCandidate: CustomerCrmCandidate | undefined;
+      let agentActiveDraft = activeDraft;
+      if (
+        activeDraft &&
+        draftNeedsCustomerResolution(activeDraft) &&
+        meegleIdentity &&
+        this.identityManager
+      ) {
+        try {
+          customerCandidates = await this.identityManager.resolveCustomerCrmCandidatesByIds({
+            identity: meegleIdentity,
+            workItemIds: activeDraft.workItemIds,
+          });
+          selectedCustomerCandidate = selectCustomerCandidate(
+            message.content,
+            customerCandidates,
+          );
+          if (selectedCustomerCandidate) {
+            agentActiveDraft = applyCustomerCandidateSelection(
+              activeDraft,
+              customerCandidates,
+              selectedCustomerCandidate,
+            );
+          }
+        } catch (error) {
+          logger.warn("customer.candidate_context_failed", {
+            messageId: message.messageId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       this.store.recordOperation({
         messageId: message.messageId,
         step: "agent_execution",
@@ -477,7 +515,17 @@ export class LarkTicketService {
       let rawResult = await this.agent.run({
         envelope,
         history,
-        ...(activeDraft ? { activeDraft } : {}),
+        ...(agentActiveDraft ? { activeDraft: agentActiveDraft } : {}),
+        ...(customerCandidates.length
+          ? {
+              customerCandidateContext: {
+                candidates: customerCandidates,
+                ...(selectedCustomerCandidate
+                  ? { selected: selectedCustomerCandidate }
+                  : {}),
+              },
+            }
+          : {}),
         resourceRoot: this.config.storage.resourceDir,
       });
       const allResources = [
@@ -541,10 +589,33 @@ export class LarkTicketService {
         text: attachmentGate.text,
         draft: routeContinuation.draft,
       };
+      if (
+        customerCandidates.length === 0 &&
+        preliminaryResult.draft.missingFields.some((field) =>
+          /客户管理|客户\s*[\/／]\s*店铺|客户或店铺|CRM/iu.test(field),
+        ) &&
+        preliminaryResult.draft.workItemIds.length > 1 &&
+        meegleIdentity &&
+        this.identityManager
+      ) {
+        try {
+          customerCandidates = await this.identityManager.resolveCustomerCrmCandidatesByIds({
+            identity: meegleIdentity,
+            workItemIds: preliminaryResult.draft.workItemIds,
+          });
+        } catch (error) {
+          logger.warn("customer.candidate_readback_failed", {
+            messageId: message.messageId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       const outcomeGuard = enforceDeterministicOutcome({
         envelope,
         history,
         ...(activeDraft ? { activeDraft } : {}),
+        ...(customerCandidates.length ? { customerCandidates } : {}),
+        ...(selectedCustomerCandidate ? { selectedCustomerCandidate } : {}),
         result: preliminaryResult,
       });
       const result = outcomeGuard.result;

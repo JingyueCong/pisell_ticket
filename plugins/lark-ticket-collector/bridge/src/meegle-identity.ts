@@ -902,6 +902,46 @@ export class MeegleIdentityManager {
     };
   }
 
+  async resolveCustomerCrmCandidatesByIds(input: {
+    identity: MeegleRequestIdentity;
+    workItemIds: string[];
+  }): Promise<CustomerCrmCandidate[]> {
+    const workItemIds = [
+      ...new Set(input.workItemIds.map((value) => value.trim()).filter((value) => /^\d+$/u.test(value))),
+    ].slice(0, 10);
+    const candidates = new Map<string, CustomerCrmCandidate>();
+    for (const workItemId of workItemIds) {
+      const projectKey = this.config.meegleIdentity.projectKey;
+      const mql =
+        "SELECT `work_item_id`, `name` " +
+        `FROM \`${projectKey}\`.\`${CUSTOMER_CRM_WORK_ITEM_TYPE}\` ` +
+        `WHERE \`work_item_id\` = ${workItemId} LIMIT 1`;
+      const result = await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "query",
+          "--project-key",
+          projectKey,
+          "--mql",
+          mql,
+          "--format",
+          "json",
+        ],
+        true,
+      );
+      for (const candidate of customerCrmCandidates(
+        JSON.parse(result.stdout) as unknown,
+        projectKey,
+      )) {
+        if (candidate.workItemId === workItemId) candidates.set(workItemId, candidate);
+      }
+    }
+    return workItemIds
+      .map((workItemId) => candidates.get(workItemId))
+      .filter((candidate): candidate is CustomerCrmCandidate => Boolean(candidate));
+  }
+
   private profileFor(senderId: string): string {
     const overridden = this.config.meegleIdentity.profileOverrides.get(senderId);
     if (overridden) return overridden;

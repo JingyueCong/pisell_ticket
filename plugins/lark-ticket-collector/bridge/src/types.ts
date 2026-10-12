@@ -133,6 +133,10 @@ export interface AgentRequest {
   envelope: InboundEnvelope;
   history: StoredMessage[];
   activeDraft?: DraftSnapshot;
+  customerCandidateContext?: {
+    candidates: CustomerCrmCandidate[];
+    selected?: CustomerCrmCandidate;
+  };
   resourceRoot: string;
 }
 

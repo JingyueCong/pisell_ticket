@@ -111,6 +111,46 @@ test("customer CRM lookup is read-only and uses the verified identity profile", 
   }
 });
 
+test("customer CRM candidates can be read back by their stored IDs without writes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const calls: string[][] = [];
+  const names = new Map([
+    ["6416657899", "8793 🌺Basic + sexycloakroom（AU）"],
+    ["6168016739", "8793 SexyCloakRoomSYD"],
+  ]);
+  const runner: ProcessRunner = async (executable, args) => {
+    calls.push([executable, ...args]);
+    const mql = args[args.indexOf("--mql") + 1] ?? "";
+    const workItemId = [...names.keys()].find((id) => mql.includes(id));
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        rows: workItemId
+          ? [{ work_item_id: workItemId, name: names.get(workItemId) }]
+          : [],
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveCustomerCrmCandidatesByIds({
+        identity: { profile: "lark-yvonne", userKey: "yvonne", name: "Yvonne" },
+        workItemIds: ["6416657899", "6168016739", "not-an-id", "6416657899"],
+      });
+    assert.deepEqual(
+      result.map((candidate) => [candidate.workItemId, candidate.name]),
+      [...names.entries()],
+    );
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every((call) => call[call.indexOf("--profile") + 1] === "lark-yvonne"));
+    assert.ok(calls.every((call) => !call.some((value) => /create|update|delete/u.test(value))));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("customer intake node owner is force-updated and read back with the verified profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   const calls: string[][] = [];
