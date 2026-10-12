@@ -196,6 +196,7 @@ https://tenant.feishu.cn/minutes/obcnu...
 - 上门服务链接没有触发：若使用自动入群监听，确认 `AUTO_VISIT_RECORD_GROUPS=true`；否则确认群 ID 在 `VISIT_RECORD_CHAT_IDS`。同时确认应用能接收群内非 @ 消息、机器人仍在群内，并且消息或妙记卡片中包含可识别的 `/minutes/<token>` 链接。
 - 上门服务提示妙记不可读：确认 `LARK_CLI_PROFILE` 的用户已授权 `minutes:minutes.basic:read`、`minutes:minutes.artifacts:read` 和 `minutes:minutes.transcript:export`，该用户能在飞书中打开该妙记，而且妙记已经生成完成。
 - 上门服务卡在字段：确认客服工单“对应问题类型”已有启用选项 `上门服务`；bridge 不会用其他问题类型代替。
+- 未创建却回复“接口拒绝”：Bridge 会用 Broker 命令审计验证该说法；没有真实非零命令结果时会改为明确补问，权威路由已经确定的类型不会再次索取。运维可在操作流水中查看 `deterministic_outcome_guard`。
 - `doctor` 中 Meegle 失败：确认 `MEEGLE_BIN` 路径正确；未启用员工 OAuth 时重新完成 `meegle auth login --host project.feishu.cn`。
 - 首次使用一直提示未授权：先打开机器人返回的个人授权链接完成登录，再回复“已授权”；授权链接过期后重新发送工单取得新链接。
 - 身份验证失败：确认 `LARK_CLI_PROFILE` 已授权 `contact:user:search`，且员工在 OAuth 页面登录的是自己的飞书项目账号。

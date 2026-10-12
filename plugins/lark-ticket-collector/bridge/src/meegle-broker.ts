@@ -19,6 +19,13 @@ export interface MeegleBrokerCapability {
   token: string;
 }
 
+export interface MeegleBrokerAuditEntry {
+  tool: "meegle";
+  operation: string;
+  exitCode: number;
+  policyDenied: boolean;
+}
+
 const MAX_ARGUMENTS = 200;
 const MAX_ARGUMENT_LENGTH = 100_000;
 
@@ -109,6 +116,7 @@ function runMeegle(input: {
 
 export class MeegleBrokerSession {
   readonly capability: MeegleBrokerCapability;
+  readonly audit: MeegleBrokerAuditEntry[] = [];
   private stopping = false;
 
   constructor(
@@ -158,14 +166,26 @@ export class MeegleBrokerSession {
     const responsePath = join(this.input.directory, `response-${id}.json`);
     const responseTempPath = `${responsePath}.tmp`;
     let response: BrokerResponse;
+    let operation = "unknown";
+    let policyDenied = false;
     try {
       const request = JSON.parse(await readFile(processingPath, "utf8")) as BrokerRequest;
+      if (Array.isArray(request.args)) {
+        operation =
+          request.args
+            .slice(0, 2)
+            .filter((value) => typeof value === "string")
+            .join(" ") || "unknown";
+      }
       if (request.token !== this.capability.token) {
         response = { exitCode: 77, stdout: "", stderr: "Invalid Meegle broker capability" };
+        policyDenied = true;
       } else if (!Array.isArray(request.args) || !request.args.every((value) => typeof value === "string")) {
         response = { exitCode: 64, stdout: "", stderr: "Invalid Meegle broker request" };
+        policyDenied = true;
       } else {
         const policyError = meegleBrokerPolicyError(request.args);
+        policyDenied = Boolean(policyError);
         response = policyError
           ? { exitCode: 64, stdout: "", stderr: policyError }
           : await runMeegle({
@@ -182,6 +202,12 @@ export class MeegleBrokerSession {
         stderr: error instanceof Error ? error.message : String(error),
       };
     }
+    this.audit.push({
+      tool: "meegle",
+      operation,
+      exitCode: response.exitCode,
+      policyDenied,
+    });
     await writeFile(responseTempPath, JSON.stringify(response), { mode: 0o600 });
     await rename(responseTempPath, responsePath);
     await rm(processingPath, { force: true });

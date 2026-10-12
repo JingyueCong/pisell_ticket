@@ -141,7 +141,15 @@ export interface AgentResult {
   draft: DraftMemoryUpdate;
   workItemOutcomes: WorkItemOutcome[];
   attachmentArchive: AttachmentArchiveReport;
+  commandEvidence?: AgentCommandEvidence[];
   diagnostics: string[];
+}
+
+export interface AgentCommandEvidence {
+  tool: "meegle";
+  operation: string;
+  exitCode: number;
+  policyDenied: boolean;
 }
 
 export type WorkItemOutcomeDisposition =

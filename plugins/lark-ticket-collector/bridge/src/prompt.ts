@@ -155,6 +155,8 @@ export function buildAgentPrompt(
 - draft.action=update：本轮是在补充下方活动草稿，但仍有缺失字段、附件、OAuth 或明确确认等待处理。
 - draft.action=close：下方活动草稿已成功创建、更新、取消或明确结束。
 - draft.action=none：本轮无需改变活动草稿；完整的一次性请求成功完成且此前没有对应草稿时也使用 none。
+- draft.missing_fields 只能填写仍需员工补充的规范字段名称（例如“问题来源”“商家问题提出人”），不得写“等待接口恢复”“接口接受某字段”或其他错误说明。权威路由已经给出 customerIssueOption 时，不得再把“对应问题类型”列为缺项。
+- 没有实际执行失败的 Meegle 命令及其非零退出结果时，禁止声称“接口拒绝、元数据异常、配置待恢复”。未创建且仍有缺项时，reply 必须直接列出缺项并向员工提问，不得只报告“暂未提交”。
 - open/update 时 summary 必须是简短、事实化的当前草稿摘要，missing_fields 只列仍缺少的字段，work_item_ids 可保留真实查询候选或已确认目标工单号，但其查询/写入语义必须以本轮 \`work_item_outcomes\` 为准。不得保存密钥、token、App Secret、完整认证信息或推测内容。
 - 如果员工本轮消息与活动草稿无关，不要将活动草稿字段带入新工单；按新请求独立处理。
 

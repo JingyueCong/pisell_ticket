@@ -25,6 +25,7 @@ import {
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import { logger } from "./logger.js";
+import { enforceDeterministicOutcome } from "./outcome-guard.js";
 import {
   isMeegleAuthorizationConfirmation,
   MeegleIdentityManager,
@@ -516,11 +517,37 @@ export class LarkTicketService {
         ...(activeDraft ? { activeDraft } : {}),
         draft: attachmentGate.draft,
       });
-      const result = {
+      const preliminaryResult = {
         ...rawResult,
         text: attachmentGate.text,
         draft: routeContinuation.draft,
       };
+      const outcomeGuard = enforceDeterministicOutcome({
+        envelope,
+        history,
+        ...(activeDraft ? { activeDraft } : {}),
+        result: preliminaryResult,
+      });
+      const result = outcomeGuard.result;
+      if (outcomeGuard.corrected) {
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "deterministic_outcome_guard",
+          status: "info",
+          detail: {
+            ...(outcomeGuard.reason ? { reason: outcomeGuard.reason } : {}),
+            missingFields: result.draft.missingFields,
+            failedCommandCount: (result.commandEvidence ?? []).filter(
+              (entry) => entry.exitCode !== 0 && !entry.policyDenied,
+            ).length,
+          },
+        });
+        logger.warn("agent.outcome_corrected", {
+          messageId: message.messageId,
+          reason: outcomeGuard.reason,
+          missingFields: result.draft.missingFields,
+        });
+      }
       this.store.recordOperation({
         messageId: message.messageId,
         step: "agent_execution",

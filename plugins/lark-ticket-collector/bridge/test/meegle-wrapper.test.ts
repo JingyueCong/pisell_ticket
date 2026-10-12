@@ -24,7 +24,7 @@ async function invoke(args: string[]) {
   await broker.prepare();
   const brokerLoop = broker.run();
   try {
-    return await new Promise<{ status: number | null; stdout: string; stderr: string }>(
+    const result = await new Promise<{ status: number | null; stdout: string; stderr: string }>(
       (resolveResult, reject) => {
         const child = spawn(wrapper, args, {
           env: {
@@ -45,6 +45,7 @@ async function invoke(args: string[]) {
         child.on("close", (status) => resolveResult({ status, stdout, stderr }));
       },
     );
+    return { ...result, audit: broker.audit.map((entry) => ({ ...entry })) };
   } finally {
     broker.stop();
     await brokerLoop;
@@ -96,6 +97,14 @@ test("wrapper rejects Agent owner mutation but permits ordinary field updates", 
   ]);
   assert.equal(allowed.status, 0);
   assert.match(allowed.stdout, /--profile\nlark-alice\nworkitem\nupdate/);
+  assert.deepEqual(allowed.audit, [
+    {
+      tool: "meegle",
+      operation: "workitem update",
+      exitCode: 0,
+      policyDenied: false,
+    },
+  ]);
 });
 
 test("wrapper cannot change profile, authentication, or CLI configuration", async () => {
@@ -106,5 +115,6 @@ test("wrapper cannot change profile, authentication, or CLI configuration", asyn
   ]) {
     const result = await invoke(args);
     assert.equal(result.status, 64);
+    assert.equal(result.audit[0]?.policyDenied, true);
   }
 });

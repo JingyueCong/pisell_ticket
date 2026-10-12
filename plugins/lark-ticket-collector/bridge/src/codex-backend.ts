@@ -589,6 +589,7 @@ export class CodexCliBackend implements AgentBackend {
       const diagnostics = result.stderr.trim() ? [tail(result.stderr)] : [];
       return {
         ...parsed,
+        commandEvidence: meegleBroker?.audit.map((entry) => ({ ...entry })) ?? [],
         diagnostics,
       };
     } finally {
