@@ -1,5 +1,17 @@
 # Auth Guard（所有业务命令前必须执行）
 
+## 常驻 Bridge broker 模式
+
+若环境中存在 `MEEGLE_BROKER_DIR`，当前身份已由常驻 Bridge 在进入 Agent 前核验，Meegle 命令会通过受控 wrapper 转交沙箱外 broker：
+
+- 只使用可信桥接元数据提供的 `meegle_command` 绝对路径，命令工具设置 `login=false`。
+- 不添加 `--profile`，不调用裸 `meegle`，不申请 `sandbox_permissions=require_escalated`。
+- 只允许 `auth status`，不得执行 `auth login/logout` 或修改 `config`。
+- `auth status` 若异常，立即报告 Bridge 认证故障并停止写入；不要在 Agent 内启动 OAuth。员工 OAuth 只由 Bridge 前置身份门禁发起。
+- 登录正常时直接进入 STEP DONE，后续命令始终使用同一 `meegle_command`。
+
+以下普通 Auth Guard 仅适用于非 Bridge broker 环境。
+
 ## 触发条件
 
 - **主动登录**：用户说"登录 Meegle"、"连接飞书项目"、"login meegle"等。

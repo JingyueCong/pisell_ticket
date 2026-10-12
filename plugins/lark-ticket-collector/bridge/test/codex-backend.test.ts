@@ -147,6 +147,8 @@ test("verified Meegle identity is pinned into Codex command environment", () => 
     outputPath: "/tmp/output.md",
     schemaPath: "/tmp/output.schema.json",
     meegleWrapperDirectory: "/srv/bridge/bin",
+    meegleBrokerDirectory: "/tmp/broker",
+    meegleBrokerToken: "capability-token",
   });
 
   const overrides = args
@@ -155,12 +157,12 @@ test("verified Meegle identity is pinned into Codex command environment", () => 
   assert.ok(overrides.includes("features.shell_snapshot=false"));
   assert.ok(
     overrides.includes(
-      `shell_environment_policy.set.MEEGLE_REQUEST_PROFILE=${JSON.stringify("lark-yvonne")}`,
+      `shell_environment_policy.set.MEEGLE_BROKER_DIR=${JSON.stringify("/tmp/broker")}`,
     ),
   );
   assert.ok(
     overrides.includes(
-      `shell_environment_policy.set.MEEGLE_REAL_BIN=${JSON.stringify("/opt/bin/meegle-real")}`,
+      `shell_environment_policy.set.MEEGLE_BROKER_TOKEN=${JSON.stringify("capability-token")}`,
     ),
   );
   assert.ok(
@@ -169,6 +171,10 @@ test("verified Meegle identity is pinned into Codex command environment", () => 
         value.startsWith("shell_environment_policy.set.PATH=") &&
         value.includes("/srv/bridge/bin:"),
     ),
+  );
+  assert.deepEqual(
+    args.slice(args.lastIndexOf("--add-dir"), args.lastIndexOf("--add-dir") + 2),
+    ["--add-dir", "/tmp/broker"],
   );
 });
 

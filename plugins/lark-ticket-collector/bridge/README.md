@@ -18,7 +18,7 @@
 - 附件落盘后记录 SHA-256；附件和截图内容一律按不可信业务证据处理，不能覆盖系统规则。
 - 可用群、可用员工、是否必须 @ 机器人都由环境变量限制。
 - 可启用“机器人入群即监听”：任何主动加入机器人的群内出现一条飞书妙记链接后，无需 @，服务会读取智能纪要、章节、待办、关键词和完整逐字稿，并只创建一张“上门服务”客服主单。群内普通消息仍受原群白名单与 `REQUIRE_MENTION` 约束。
-- 员工级 Meegle 身份会同时通过绝对 wrapper 路径、动态 `shell_environment_policy` 和关闭本轮 shell snapshot 三层固定；创建命令不会因登录 shell 重排 `PATH` 而退回默认 Echo profile。
+- 员工级 Meegle 身份通过一次性 Bridge broker capability、绝对 wrapper 路径、动态 `shell_environment_policy` 和关闭本轮 shell snapshot 固定。Codex 沙箱只提交受策略约束的命令请求；Bridge 在沙箱外以本轮已验证 profile 执行 Meegle，因此不会依赖模型是否申请钥匙串权限，也不会因登录 shell 重排 `PATH` 而退回默认 Echo profile。capability 每轮随机生成、绑定单一 profile，并在本轮结束后随临时目录销毁；Agent 不能切换 profile、登录/退出、修改 CLI 配置、上传附件或修改受保护负责人。
 - 可启用员工级 Meegle OAuth：每位员工首次使用时绑定自己的身份，之后由该员工身份执行查重、创建、更新、附件和回读，系统“创建人”因此等于飞书消息提交人；禁止回退到 Echo 或其他共用账号。
 - 可启用仅监听 `127.0.0.1` 的内部客服入口，让同一台 Mac mini 上的客户信息 Agent 复用本服务的 Agent、查重、创建和回读链路。该入口权威锁定 `customer_only`，只创建客服主单，不创建或关联 T1/T2/T3/T5 等配套项。
 
@@ -144,7 +144,7 @@ node --env-file=.env dist/src/main.js
 
 `doctor` 会检查 Codex 版本、执行一次真实的无写入结构化输出探针，并检查 Meegle、`lark-cli` profile、工作区规则和运行配置。启动日志先出现 `codex.runtime_probe_ready`、再出现 `service.ready` 后，才可在允许的群里发送：
 
-启用员工级 OAuth 时，`doctor` 不要求默认 Meegle profile 已登录，而是检查 CLI 可执行文件，并使用 override 中第一位员工验证 `contact:user:search` 权限。首次收单的授权过程不会保存 access token 到 bridge 数据库；token 仍由 Meegle CLI 自己管理，bridge 只保存发送者与已验证 profile/user_key 的绑定。
+启用员工级 OAuth 时，`doctor` 不要求默认 Meegle profile 已登录，而是检查 CLI 可执行文件，并使用 override 中第一位员工验证 `contact:user:search` 权限。首次收单的授权过程不会保存 access token 到 bridge 数据库；token 仍由 Meegle CLI 自己管理，bridge 只保存发送者与已验证 profile/user_key 的绑定。业务命令由 Bridge broker 在同一受信任进程环境中读取该 profile 的钥匙串凭据，token 不会传给 Codex 环境或写入 broker 请求文件。
 
 ```text
 @工单机器人 创建一个风控处理工单：

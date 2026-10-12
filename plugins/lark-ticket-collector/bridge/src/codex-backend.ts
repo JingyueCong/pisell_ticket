@@ -9,6 +9,7 @@ import { z } from "zod";
 import { AgentBackendError } from "./agent-failure.js";
 import { ConcurrencyLimiter } from "./concurrency-limiter.js";
 import type { BridgeConfig } from "./config.js";
+import { MeegleBrokerSession } from "./meegle-broker.js";
 import { buildAgentPrompt } from "./prompt.js";
 import type { AgentBackend, AgentRequest, AgentResult } from "./types.js";
 
@@ -232,7 +233,8 @@ export function buildCodexArgs(input: {
   outputPath: string;
   schemaPath: string;
   meegleWrapperDirectory?: string;
-  meegleRealBin?: string;
+  meegleBrokerDirectory?: string;
+  meegleBrokerToken?: string;
 }): string[] {
   const args = [
     "exec",
@@ -254,7 +256,11 @@ export function buildCodexArgs(input: {
   const identity = input.request.envelope.meegleIdentity;
   if (identity) {
     const wrapperDirectory = input.meegleWrapperDirectory ?? join(process.cwd(), "bin");
-    const meegleRealBin = input.meegleRealBin ?? resolveExecutablePath(input.config.meegleIdentity.bin);
+    const brokerDirectory = input.meegleBrokerDirectory;
+    const brokerToken = input.meegleBrokerToken;
+    if (!brokerDirectory || !brokerToken) {
+      throw new Error("Meegle broker capability is required for an authenticated request");
+    }
     const commandPath = `${wrapperDirectory}:${process.env.PATH ?? ""}`;
     const tomlString = (value: string) => JSON.stringify(value);
     // The bridge process environment alone is insufficient: Codex may reuse a
@@ -265,9 +271,13 @@ export function buildCodexArgs(input: {
       "-c",
       `shell_environment_policy.set.PATH=${tomlString(commandPath)}`,
       "-c",
-      `shell_environment_policy.set.MEEGLE_REQUEST_PROFILE=${tomlString(identity.profile)}`,
+      `shell_environment_policy.set.MEEGLE_BROKER_DIR=${tomlString(brokerDirectory)}`,
       "-c",
-      `shell_environment_policy.set.MEEGLE_REAL_BIN=${tomlString(meegleRealBin)}`,
+      `shell_environment_policy.set.MEEGLE_BROKER_TOKEN=${tomlString(brokerToken)}`,
+      "-c",
+      `shell_environment_policy.set.MEEGLE_BROKER_TIMEOUT_MS=${tomlString(String(input.config.codex.timeoutMs))}`,
+      "--add-dir",
+      brokerDirectory,
     );
   }
   if (input.config.codex.model) args.push("--model", input.config.codex.model);
@@ -483,16 +493,32 @@ export class CodexCliBackend implements AgentBackend {
     const meegleRealBin = request.envelope.meegleIdentity
       ? resolveExecutablePath(this.config.meegleIdentity.bin)
       : this.config.meegleIdentity.bin;
-    const args = buildCodexArgs({
-      config: this.config,
-      request,
-      outputPath,
-      schemaPath,
-      meegleWrapperDirectory,
-      meegleRealBin,
-    });
+    const meegleBrokerDirectory = join(tempDirectory, "meegle-broker");
+    const meegleBroker = request.envelope.meegleIdentity
+      ? new MeegleBrokerSession({
+          directory: meegleBrokerDirectory,
+          binary: meegleRealBin,
+          profile: request.envelope.meegleIdentity.profile,
+          commandTimeoutMs: this.config.codex.timeoutMs,
+        })
+      : undefined;
+    if (meegleBroker) await meegleBroker.prepare();
+    const meegleBrokerLoop = meegleBroker?.run();
 
     try {
+      const args = buildCodexArgs({
+        config: this.config,
+        request,
+        outputPath,
+        schemaPath,
+        meegleWrapperDirectory,
+        ...(meegleBroker
+          ? {
+              meegleBrokerDirectory,
+              meegleBrokerToken: meegleBroker.capability.token,
+            }
+          : {}),
+      });
       let result: ProcessResult;
       try {
         result = await runProcess({
@@ -504,8 +530,9 @@ export class CodexCliBackend implements AgentBackend {
           env: request.envelope.meegleIdentity
             ? {
                 ...process.env,
-                MEEGLE_REQUEST_PROFILE: request.envelope.meegleIdentity.profile,
-                MEEGLE_REAL_BIN: meegleRealBin,
+                MEEGLE_BROKER_DIR: meegleBrokerDirectory,
+                MEEGLE_BROKER_TOKEN: meegleBroker!.capability.token,
+                MEEGLE_BROKER_TIMEOUT_MS: String(this.config.codex.timeoutMs),
                 PATH: `${join(process.cwd(), "bin")}:${process.env.PATH ?? ""}`,
               }
             : process.env,
@@ -565,6 +592,8 @@ export class CodexCliBackend implements AgentBackend {
         diagnostics,
       };
     } finally {
+      meegleBroker?.stop();
+      await meegleBrokerLoop;
       await rm(tempDirectory, { recursive: true, force: true });
     }
   }
