@@ -17,6 +17,14 @@ export function isDraftRouteCorrection(messageText: string): boolean {
   );
 }
 
+export function draftIncludesContentMaintenance(
+  draft?: Pick<DraftSnapshot, "ticketType" | "summary">,
+): boolean {
+  return /(?:内容维护|内容工单|T3)/iu.test(
+    [draft?.ticketType, draft?.summary].filter(Boolean).join(" "),
+  );
+}
+
 export function enforceDraftRouteContinuation(input: {
   messageText: string;
   activeDraft?: DraftSnapshot;

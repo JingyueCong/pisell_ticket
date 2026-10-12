@@ -53,6 +53,13 @@ export interface ContentMaintenanceProducerSource {
   error?: string;
 }
 
+export interface ContentProducerAssignment {
+  roleKey: string;
+  roleName: string;
+  producerName: string;
+  producerUserKey: string;
+}
+
 export interface MeegleRequestIdentity {
   profile: string;
   userKey: string;

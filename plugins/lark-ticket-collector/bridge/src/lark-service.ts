@@ -14,8 +14,14 @@ import {
 import type { BridgeConfig } from "./config.js";
 import { AgentBackendError, buildAgentFailureReply } from "./agent-failure.js";
 import { enforceAttachmentCompletion } from "./attachment-gate.js";
-import { customerIntakeOwnerTarget } from "./work-item-outcomes.js";
-import { enforceDraftRouteContinuation } from "./draft-continuation.js";
+import {
+  contentMaintenanceProducerTarget,
+  customerIntakeOwnerTarget,
+} from "./work-item-outcomes.js";
+import {
+  draftIncludesContentMaintenance,
+  enforceDraftRouteContinuation,
+} from "./draft-continuation.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import { logger } from "./logger.js";
@@ -405,7 +411,7 @@ export class LarkTicketService {
         preliminaryRoute.standaloneWorkItemType === "content_maintenance";
       const continuingContentMaintenance =
         !preliminaryRoute.authoritative &&
-        /(?:内容维护|T3)/iu.test(activeDraft?.ticketType ?? "");
+        draftIncludesContentMaintenance(activeDraft);
       const producerRotationKey = explicitContentMaintenance
         ? activeDraft?.conversationKey ?? messageKey
         : continuingContentMaintenance
@@ -592,6 +598,73 @@ export class LarkTicketService {
             status: "failed",
             detail: {
               workItemId: customerWorkItemId,
+              error: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
+            },
+          });
+        }
+      }
+      const verificationProducerSource = envelope.contentMaintenanceProducerSource;
+      const selectedProducer =
+        verificationProducerSource?.selectionMode === "round_robin_single" &&
+        verificationProducerSource.producerNames.length === 1
+          ? verificationProducerSource.producerNames[0]
+          : undefined;
+      const contentWorkItemId = contentMaintenanceProducerTarget(
+        result,
+        envelope.routePolicy,
+        Boolean(selectedProducer),
+      );
+      if (
+        contentWorkItemId &&
+        selectedProducer &&
+        meegleIdentity &&
+        this.identityManager
+      ) {
+        try {
+          const assignment =
+            await this.identityManager.ensureContentMaintenanceProducer({
+              identity: meegleIdentity,
+              workItemId: contentWorkItemId,
+              producerName: selectedProducer,
+              roleName: "制作人&交付人",
+            });
+          logger.info("content.producer_verified", {
+            messageId: message.messageId,
+            workItemId: contentWorkItemId,
+            producerName: assignment.producerName,
+            producerUserKey: assignment.producerUserKey,
+            roleKey: assignment.roleKey,
+          });
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "content_producer_verification",
+            status: "succeeded",
+            detail: {
+              workItemId: contentWorkItemId,
+              producerName: assignment.producerName,
+              producerUserKey: assignment.producerUserKey,
+              roleKey: assignment.roleKey,
+            },
+          });
+        } catch (error) {
+          logger.warn("content.producer_failed", {
+            messageId: message.messageId,
+            workItemId: contentWorkItemId,
+            producerName: selectedProducer,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          resultText = [
+            resultText,
+            "",
+            `注意：内容维护工单 #${contentWorkItemId} 已保留，但“制作人&交付人”未能回读确认为本轮唯一制作人 ${selectedProducer}；管理员只需校正负责人，不要重复建单。`,
+          ].join("\n");
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "content_producer_verification",
+            status: "failed",
+            detail: {
+              workItemId: contentWorkItemId,
+              producerName: selectedProducer,
               error: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
             },
           });

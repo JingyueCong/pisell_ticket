@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import type { BridgeConfig } from "./config.js";
 import type {
+  ContentProducerAssignment,
   CustomerCrmCandidate,
   CustomerCrmResolution,
   MeegleRequestIdentity,
@@ -41,6 +42,7 @@ export interface CustomerNodeOwnerCorrection {
 }
 
 const CUSTOMER_CRM_WORK_ITEM_TYPE = "67df84a32e42950cb0195cba";
+const CONTENT_MAINTENANCE_WORK_ITEM_TYPE = "67df87a8baf45c9c247ba778";
 
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
@@ -199,12 +201,19 @@ function collectOwnerKeys(value: unknown, target: Set<string>): void {
     return;
   }
   if (typeof value === "string" && value.trim()) {
-    target.add(value.trim());
+    const candidate = value.trim();
+    const wrapped = /^<id:([^>]+)>$/u.exec(candidate);
+    target.add(wrapped?.[1] ?? candidate);
     return;
   }
   if (!value || typeof value !== "object") return;
   const object = value as Record<string, unknown>;
-  const userKey = stringValue(object.user_key) ?? stringValue(object.userKey);
+  const userKey =
+    stringValue(object.user_key) ??
+    stringValue(object.userKey) ??
+    stringValue(object.user_id) ??
+    stringValue(object.userId) ??
+    stringValue(object.id);
   if (userKey) target.add(userKey);
   for (const child of Object.values(object)) {
     if (child && typeof child === "object") collectOwnerKeys(child, target);
@@ -238,6 +247,110 @@ function workflowNodeOwnerKeys(node: Record<string, unknown>): Set<string> {
     if (Object.hasOwn(node, key)) collectOwnerKeys(node[key], result);
   }
   return result;
+}
+
+function exactRoleKey(payload: unknown, roleName: string): string {
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(payload, objects);
+  const keys = new Set<string>();
+  for (const object of objects) {
+    const name =
+      stringValue(object.role_name) ??
+      stringValue(object.roleName) ??
+      stringValue(object.name);
+    if (name !== roleName) continue;
+    const key =
+      stringValue(object.role_key) ??
+      stringValue(object.roleKey) ??
+      stringValue(object.role_id) ??
+      stringValue(object.roleId) ??
+      stringValue(object.id);
+    if (key) keys.add(key);
+  }
+  if (keys.size !== 1) {
+    throw new Error(
+      `Content producer role must resolve uniquely (role=${roleName}, matches=${keys.size})`,
+    );
+  }
+  return [...keys][0]!;
+}
+
+function exactUserKey(payload: unknown, expectedName: string): string {
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(payload, objects);
+  const expected = normalized(expectedName);
+  const exact = new Set<string>();
+  const all = new Set<string>();
+  for (const object of objects) {
+    const userKey = stringValue(object.user_key) ?? stringValue(object.userKey);
+    if (!userKey) continue;
+    all.add(userKey);
+    const names = [
+      object.name,
+      object.name_cn,
+      object.name_en,
+      object.display_name,
+      object.email,
+    ]
+      .map(scalarValue)
+      .filter((value): value is string => Boolean(value));
+    if (names.some((name) => normalized(name) === expected)) exact.add(userKey);
+  }
+  const matches = exact.size ? exact : all;
+  if (matches.size !== 1) {
+    throw new Error(
+      `Content producer must resolve to one active Meegle user ` +
+        `(name=${expectedName}, matches=${matches.size})`,
+    );
+  }
+  return [...matches][0]!;
+}
+
+function roleOwnerKeysFromQuery(
+  payload: unknown,
+  workItemId: string,
+  roleKey: string,
+  roleName: string,
+): Set<string> {
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(payload, objects);
+  const matchingRows = objects.filter((object) =>
+    [object.work_item_id, object.workItemId, object.id]
+      .map(scalarValue)
+      .some((value) => value === workItemId),
+  );
+  const rows = matchingRows.length ? matchingRows : objects;
+  const result = new Set<string>();
+  for (const object of rows) {
+    for (const [key, value] of Object.entries(object)) {
+      if (
+        key === roleKey ||
+        key === roleName ||
+        key === `__${roleName}` ||
+        key.includes(roleName)
+      ) {
+        collectOwnerKeys(value, result);
+      }
+    }
+    const objectRoleKey =
+      stringValue(object.role_key) ??
+      stringValue(object.roleKey) ??
+      stringValue(object.role_id) ??
+      stringValue(object.roleId);
+    const objectRoleName =
+      stringValue(object.role_name) ??
+      stringValue(object.roleName);
+    if (objectRoleKey === roleKey || objectRoleName === roleName) {
+      for (const key of ["owners", "owner", "user_keys", "userKeys", "value"]) {
+        if (Object.hasOwn(object, key)) collectOwnerKeys(object[key], result);
+      }
+    }
+  }
+  return result;
+}
+
+function mqlIdentifier(value: string): string {
+  return value.replaceAll("`", "``");
 }
 
 function normalized(value: string): string {
@@ -466,6 +579,130 @@ export class MeegleIdentityManager {
     throw new Error(
       `Customer ticket intake node owner verification failed after 5 reads ` +
         `(expected=${input.identity.userKey}, actual=${[...verifiedOwners].join(",") || "none"})`,
+    );
+  }
+
+  async ensureContentMaintenanceProducer(input: {
+    identity: MeegleRequestIdentity;
+    workItemId: string;
+    producerName: string;
+    roleName?: string;
+  }): Promise<ContentProducerAssignment> {
+    const roleName = input.roleName?.trim() || "制作人&交付人";
+    const roleMetadata = await this.meegle(
+      input.identity.profile,
+      [
+        "workitem",
+        "meta-roles",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--work-item-type",
+        CONTENT_MAINTENANCE_WORK_ITEM_TYPE,
+        "--page-num",
+        "1",
+        "--role-query",
+        roleName,
+        "--format",
+        "json",
+      ],
+      true,
+    );
+    const roleKey = exactRoleKey(JSON.parse(roleMetadata.stdout) as unknown, roleName);
+
+    const userSearch = await this.meegle(
+      input.identity.profile,
+      [
+        "user",
+        "search",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--user-keys",
+        JSON.stringify([input.producerName]),
+        "--format",
+        "json",
+      ],
+      true,
+    );
+    const producerUserKey = exactUserKey(
+      JSON.parse(userSearch.stdout) as unknown,
+      input.producerName,
+    );
+    const assignment: ContentProducerAssignment = {
+      roleKey,
+      roleName,
+      producerName: input.producerName,
+      producerUserKey,
+    };
+    const query = async (): Promise<Set<string>> => {
+      const mql =
+        `SELECT \`work_item_id\`, \`__${mqlIdentifier(roleName)}\` ` +
+        `FROM \`${mqlIdentifier(this.config.meegleIdentity.projectKey)}\`.` +
+        `\`${CONTENT_MAINTENANCE_WORK_ITEM_TYPE}\` ` +
+        `WHERE \`work_item_id\` = ${input.workItemId} LIMIT 1`;
+      const result = await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "query",
+          "--project-key",
+          this.config.meegleIdentity.projectKey,
+          "--mql",
+          mql,
+          "--format",
+          "json",
+        ],
+        true,
+      );
+      return roleOwnerKeysFromQuery(
+        JSON.parse(result.stdout) as unknown,
+        input.workItemId,
+        roleKey,
+        roleName,
+      );
+    };
+
+    const currentOwners = await query();
+    if (!(currentOwners.size === 1 && currentOwners.has(producerUserKey))) {
+      const roleOperate = [
+        ...[...currentOwners]
+          .filter((userKey) => userKey !== producerUserKey)
+          .map((userKey) => ({ op: "remove", role_key: roleKey, user_keys: [userKey] })),
+        ...(!currentOwners.has(producerUserKey)
+          ? [{ op: "add", role_key: roleKey, user_keys: [producerUserKey] }]
+          : []),
+      ];
+      if (!roleOperate.length) {
+        throw new Error("Content producer role readback did not expose correctable owners");
+      }
+      await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "update",
+          "--project-key",
+          this.config.meegleIdentity.projectKey,
+          "--work-item-id",
+          input.workItemId,
+          "--role-operate",
+          JSON.stringify(roleOperate),
+          "--format",
+          "json",
+        ],
+        true,
+      );
+    }
+
+    let verifiedOwners = currentOwners;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (attempt > 0) await this.pause(500);
+      verifiedOwners = await query();
+      if (verifiedOwners.size === 1 && verifiedOwners.has(producerUserKey)) {
+        return assignment;
+      }
+    }
+    throw new Error(
+      `Content producer verification failed after 5 reads ` +
+        `(expected=${producerUserKey}, actual=${[...verifiedOwners].join(",") || "none"})`,
     );
   }
 

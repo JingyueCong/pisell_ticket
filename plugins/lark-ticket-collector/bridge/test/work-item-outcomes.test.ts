@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { customerIntakeOwnerTarget } from "../src/work-item-outcomes.js";
-import type { AgentResult } from "../src/types.js";
+import {
+  contentMaintenanceProducerTarget,
+  customerIntakeOwnerTarget,
+} from "../src/work-item-outcomes.js";
+import type { AgentResult, IntakeRoutePolicy } from "../src/types.js";
 
 function result(
   workItemOutcomes: AgentResult["workItemOutcomes"],
@@ -75,5 +78,60 @@ test("paired and standalone work items never receive customer intake correction"
       ]),
     ),
     undefined,
+  );
+});
+
+test("new paired T3 work item receives deterministic producer verification", () => {
+  const value = result([
+    { workItemId: "7130000010", role: "customer", disposition: "created" },
+    { workItemId: "7130000011", role: "paired", disposition: "created" },
+  ]);
+  const route: IntakeRoutePolicy = {
+    mode: "customer_bundle",
+    authoritative: true,
+    reason: "test",
+    pairedWorkItemType: "content_maintenance",
+  };
+  assert.equal(contentMaintenanceProducerTarget(value, route), "7130000011");
+});
+
+test("new standalone content work item receives deterministic producer verification", () => {
+  const value = result([
+    { workItemId: "7130000012", role: "standalone", disposition: "created" },
+  ]);
+  const route: IntakeRoutePolicy = {
+    mode: "standalone",
+    authoritative: true,
+    reason: "test",
+    standaloneWorkItemType: "content_maintenance",
+  };
+  assert.equal(contentMaintenanceProducerTarget(value, route), "7130000012");
+});
+
+test("reused or queried content work items are not reassigned", () => {
+  const route: IntakeRoutePolicy = {
+    mode: "customer_bundle",
+    authoritative: true,
+    reason: "test",
+    pairedWorkItemType: "content_maintenance",
+  };
+  assert.equal(
+    contentMaintenanceProducerTarget(
+      result([{ workItemId: "7130000013", role: "paired", disposition: "reused" }]),
+      route,
+    ),
+    undefined,
+  );
+});
+
+test("a persisted single-producer binding identifies T3 on a generic bundle result", () => {
+  const value = result([
+    { workItemId: "7130000014", role: "customer", disposition: "created" },
+    { workItemId: "7130000015", role: "paired", disposition: "created" },
+  ]);
+  value.draft.ticketType = "customer_bundle";
+  assert.equal(
+    contentMaintenanceProducerTarget(value, undefined, true),
+    "7130000015",
   );
 });

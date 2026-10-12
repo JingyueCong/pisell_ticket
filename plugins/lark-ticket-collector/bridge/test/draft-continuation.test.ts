@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  draftIncludesContentMaintenance,
   enforceDraftRouteContinuation,
   isDraftRouteCorrection,
 } from "../src/draft-continuation.js";
@@ -55,5 +56,22 @@ test("route wording cannot continue a draft when no active draft was resolved", 
   assert.deepEqual(
     enforceDraftRouteContinuation({ messageText, draft: openedT3 }),
     { draft: openedT3, continued: false },
+  );
+});
+
+test("customer bundle summaries retain the T3 producer binding across follow-ups", () => {
+  assert.equal(
+    draftIncludesContentMaintenance({
+      ticketType: "customer_bundle",
+      summary: "已为新东方鲜生创建客服工单并关联T3内容维护",
+    }),
+    true,
+  );
+  assert.equal(
+    draftIncludesContentMaintenance({
+      ticketType: "customer_bundle",
+      summary: "客服工单关联 T2 阻断性问题",
+    }),
+    false,
   );
 });

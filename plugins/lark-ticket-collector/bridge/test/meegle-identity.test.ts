@@ -364,6 +364,179 @@ test("customer intake owner readback retries brief API propagation lag", async (
   }
 });
 
+test("content producer is reduced to the one round-robin assignee and read back", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const calls: string[][] = [];
+  let corrected = false;
+  const runner: ProcessRunner = async (executable, args) => {
+    calls.push([executable, ...args]);
+    if (args.includes("meta-roles")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            roles: [
+              { role_id: "role_c17278", role_name: "制作人&交付人" },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("search")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { users: [{ user_key: "user_annie", name: "Annie" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("query")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            rows: [
+              {
+                work_item_id: "7132735915",
+                "__制作人&交付人": corrected
+                  ? [{ user_key: "user_annie", name: "Annie" }]
+                  : [
+                      { user_key: "user_annie", name: "Annie" },
+                      { user_key: "user_joy", name: "Joy" },
+                    ],
+              },
+            ],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update")) corrected = true;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureContentMaintenanceProducer({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7132735915",
+        producerName: "Annie",
+      });
+    assert.deepEqual(result, {
+      roleKey: "role_c17278",
+      roleName: "制作人&交付人",
+      producerName: "Annie",
+      producerUserKey: "user_annie",
+    });
+    const updateCall = calls.find((call) => call.includes("update"));
+    assert.ok(updateCall);
+    assert.equal(updateCall?.[updateCall.indexOf("--profile") + 1], "lark-alice");
+    const roleOperate = JSON.parse(
+      updateCall?.[updateCall.indexOf("--role-operate") + 1] ?? "[]",
+    ) as Array<{ op: string; role_key: string; user_keys: string[] }>;
+    assert.deepEqual(roleOperate, [
+      { op: "remove", role_key: "role_c17278", user_keys: ["user_joy"] },
+    ]);
+    assert.equal(calls.filter((call) => call.includes("query")).length, 2);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("content producer verification does not mutate an already-correct role", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let updateCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("meta-roles")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { roles: [{ role_key: "role_c17278", role_name: "制作人&交付人" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("search")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { users: [{ user_key: "user_annie", name: "Annie" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("query")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          rows: [
+            {
+              work_item_id: "7132735915",
+              "__制作人&交付人": [{ user_key: "user_annie" }],
+            },
+          ],
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update")) updateCalls += 1;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    await new MeegleIdentityManager(config(directory), runner)
+      .ensureContentMaintenanceProducer({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7132735915",
+        producerName: "Annie",
+      });
+    assert.equal(updateCalls, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("content producer verification stops on ambiguous active users", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("meta-roles")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          roles: [{ role_key: "role_c17278", role_name: "制作人&交付人" }],
+        }),
+        stderr: "",
+      };
+    }
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        users: [
+          { user_key: "user_annie_1", name: "Annie" },
+          { user_key: "user_annie_2", name: "Annie" },
+        ],
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    await assert.rejects(
+      new MeegleIdentityManager(config(directory), runner)
+        .ensureContentMaintenanceProducer({
+          identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+          workItemId: "7132735915",
+          producerName: "Annie",
+        }),
+      /must resolve to one active Meegle user/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("per-user authorization binds a verified sender and reuses only that profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   let authenticated = false;
