@@ -10,6 +10,7 @@ import type {
   CustomerCrmResolution,
   MeegleRequestIdentity,
 } from "./types.js";
+import type { TicketTitleTargetType } from "./ticket-title-update.js";
 
 export interface ProcessResult {
   exitCode: number | null;
@@ -41,9 +42,21 @@ export interface CustomerNodeOwnerCorrection {
   ownerUserKey: string;
 }
 
+export interface WorkItemTitleSummary {
+  workItemId: string;
+  name: string;
+  typeDescriptors: string[];
+}
+
+export interface WorkItemTitleUpdateResult extends WorkItemTitleSummary {
+  previousName: string;
+  changed: boolean;
+}
+
 const CUSTOMER_CRM_WORK_ITEM_TYPE = "67df84a32e42950cb0195cba";
 const CUSTOMER_SERVICE_WORK_ITEM_TYPE = "6886d47112cff2ae4ae279e3";
 const CONTENT_MAINTENANCE_WORK_ITEM_TYPE = "67df87a8baf45c9c247ba778";
+const BLOCKING_ISSUE_WORK_ITEM_TYPE = "67df88cf656f61b9b41455d3";
 const OWNER_READBACK_DELAYS_MS = [0, 1_000, 2_000, 4_000, 8_000] as const;
 
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
@@ -285,6 +298,69 @@ function customerCrmCandidates(value: unknown, projectKey: string): CustomerCrmC
     });
   }
   return [...found.values()].slice(0, 10);
+}
+
+function workItemTitleSummary(
+  value: unknown,
+  expectedWorkItemId: string,
+): WorkItemTitleSummary {
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(value, objects);
+  const row = objects.find((object) =>
+    [object.work_item_id, object.workItemId, object.id]
+      .map(scalarValue)
+      .some((candidate) => candidate === expectedWorkItemId),
+  );
+  if (!row) {
+    throw new Error(`Work item #${expectedWorkItemId} was not returned`);
+  }
+  const nameDescriptors = new Set(["name", "title", "名称", "标题"].map(normalized));
+  const name =
+    [row.name, row.title, row.名称, row.标题]
+      .map(scalarValue)
+      .find(Boolean) ?? selectedFieldValue(row, nameDescriptors);
+  if (!name) throw new Error(`Work item #${expectedWorkItemId} title was not returned`);
+  const typeDescriptors = [
+    row.work_item_type_key,
+    row.workItemTypeKey,
+    row.work_item_type_id,
+    row.workItemTypeId,
+    row.work_item_type,
+    row.workItemType,
+    row.type_key,
+    row.typeKey,
+    row.type_name,
+    row.typeName,
+  ]
+    .map(scalarValue)
+    .filter((descriptor): descriptor is string => Boolean(descriptor));
+  return { workItemId: expectedWorkItemId, name, typeDescriptors };
+}
+
+function titleTargetTypeMatches(
+  summary: WorkItemTitleSummary,
+  targetType: TicketTitleTargetType,
+): boolean {
+  const values = summary.typeDescriptors.map(normalized);
+  if (targetType === "customer") {
+    return values.some(
+      (value) =>
+        value === normalized(CUSTOMER_SERVICE_WORK_ITEM_TYPE) ||
+        value.includes(normalized("客服工单")),
+    );
+  }
+  if (targetType === "blocking_issue") {
+    return values.some(
+      (value) =>
+        value === normalized(BLOCKING_ISSUE_WORK_ITEM_TYPE) ||
+        value.includes(normalized("阻断性问题")),
+    );
+  }
+  return values.some(
+    (value) =>
+      value === normalized(CONTENT_MAINTENANCE_WORK_ITEM_TYPE) ||
+      value.includes(normalized("内容维护")),
+  );
 }
 
 function findWorkflowNode(
@@ -1052,6 +1128,102 @@ export class MeegleIdentityManager {
     return workItemIds
       .map((workItemId) => candidates.get(workItemId))
       .filter((candidate): candidate is CustomerCrmCandidate => Boolean(candidate));
+  }
+
+  async resolveWorkItemTitleTarget(input: {
+    identity: MeegleRequestIdentity;
+    candidateWorkItemIds: string[];
+    targetType: TicketTitleTargetType;
+  }): Promise<WorkItemTitleSummary[]> {
+    const ids = [
+      ...new Set(
+        input.candidateWorkItemIds
+          .map((value) => value.trim())
+          .filter((value) => /^\d+$/u.test(value)),
+      ),
+    ].slice(0, 10);
+    const summaries: WorkItemTitleSummary[] = [];
+    for (const workItemId of ids) {
+      const summary = await this.readWorkItemTitleSummary(
+        input.identity.profile,
+        workItemId,
+      );
+      if (titleTargetTypeMatches(summary, input.targetType)) summaries.push(summary);
+    }
+    return summaries;
+  }
+
+  async renameWorkItemTitle(input: {
+    identity: MeegleRequestIdentity;
+    workItemId: string;
+    newTitle: string;
+  }): Promise<WorkItemTitleUpdateResult> {
+    const workItemId = input.workItemId.trim();
+    const newTitle = input.newTitle.trim();
+    if (!/^\d+$/u.test(workItemId)) throw new Error("Work item ID must be numeric");
+    if (!newTitle || newTitle.length > 200) {
+      throw new Error("Work item title must contain 1 to 200 characters");
+    }
+    const current = await this.readWorkItemTitleSummary(
+      input.identity.profile,
+      workItemId,
+    );
+    if (current.name === newTitle) {
+      return { ...current, previousName: current.name, changed: false };
+    }
+    await this.meegle(
+      input.identity.profile,
+      [
+        "workitem",
+        "update",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--work-item-id",
+        workItemId,
+        "--fields",
+        JSON.stringify([{ field_key: "name", field_value: newTitle }]),
+        "--format",
+        "json",
+      ],
+      true,
+    );
+    let verified = current;
+    for (const delayMs of OWNER_READBACK_DELAYS_MS) {
+      if (delayMs > 0) await this.pause(delayMs);
+      verified = await this.readWorkItemTitleSummary(
+        input.identity.profile,
+        workItemId,
+      );
+      if (verified.name === newTitle) {
+        return { ...verified, previousName: current.name, changed: true };
+      }
+    }
+    throw new Error(
+      `Work item #${workItemId} title readback did not match the requested value`,
+    );
+  }
+
+  private async readWorkItemTitleSummary(
+    profile: string,
+    workItemId: string,
+  ): Promise<WorkItemTitleSummary> {
+    const result = await this.meegle(
+      profile,
+      [
+        "workitem",
+        "get",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--work-item-id",
+        workItemId,
+        "--fields",
+        JSON.stringify(["name"]),
+        "--format",
+        "json",
+      ],
+      true,
+    );
+    return workItemTitleSummary(JSON.parse(result.stdout) as unknown, workItemId);
   }
 
   private profileFor(senderId: string): string {

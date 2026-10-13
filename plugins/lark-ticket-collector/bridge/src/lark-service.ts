@@ -48,6 +48,12 @@ import {
 } from "./producer-assignment.js";
 import { conversationKey } from "./prompt.js";
 import { BridgeStore } from "./store.js";
+import {
+  deriveTicketTitleUpdatePolicy,
+  isTicketTitleUpdateRequest,
+  titleUpdateClarification,
+  type TicketTitleUpdatePolicy,
+} from "./ticket-title-update.js";
 import type {
   AgentBackend,
   ContentMaintenanceProducerSource,
@@ -421,6 +427,38 @@ export class LarkTicketService {
           message.threadId || message.rootId || message.replyToMessageId
         ),
       });
+      const titleUpdateIntent = isTicketTitleUpdateRequest(message.content);
+      const relatedTitleDraft =
+        activeDraft ??
+        (titleUpdateIntent
+          ? this.store.recentDraftByReference({
+              conversationKey: messageKey,
+              chatId: message.chatId,
+              senderId: message.senderId,
+              referenceMessageIds: [
+                message.threadId,
+                message.rootId,
+                message.replyToMessageId,
+              ].filter((messageId): messageId is string => Boolean(messageId)),
+              newerThan: Date.now() - this.config.limits.maxHistoryAgeMs,
+            })
+          : undefined);
+      const ticketTitleUpdatePolicy = deriveTicketTitleUpdatePolicy({
+        messageText: message.content,
+        ...(relatedTitleDraft ? { relatedDraft: relatedTitleDraft } : {}),
+      });
+      if (ticketTitleUpdatePolicy) {
+        await this.handleTicketTitleUpdate({
+          message,
+          messageKey,
+          policy: ticketTitleUpdatePolicy,
+          ...(relatedTitleDraft
+            ? { conversationKey: relatedTitleDraft.conversationKey }
+            : {}),
+          ...(meegleIdentity ? { identity: meegleIdentity } : {}),
+        });
+        return;
+      }
       const draftRouteCorrectionPolicy = deriveDraftRouteCorrectionPolicy({
         messageText: message.content,
         ...(activeDraft ? { activeDraft } : {}),
@@ -1005,6 +1043,146 @@ export class LarkTicketService {
         });
       }
     }
+  }
+
+  private async handleTicketTitleUpdate(input: {
+    message: NormalizedMessage;
+    messageKey: string;
+    conversationKey?: string;
+    policy: TicketTitleUpdatePolicy;
+    identity?: MeegleRequestIdentity;
+  }): Promise<void> {
+    const { message, policy } = input;
+    let reply: string;
+    let targetWorkItemId: string | undefined;
+    this.store.recordOperation({
+      messageId: message.messageId,
+      step: "ticket_title_update",
+      status: "started",
+      detail: {
+        mode: policy.mode,
+        targetMode: policy.targetMode,
+        candidateCount: policy.candidateWorkItemIds.length,
+      },
+    });
+
+    if (policy.mode === "clarify_title_update") {
+      reply = titleUpdateClarification(policy);
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "ticket_title_update",
+        status: "info",
+        detail: { clarificationReason: policy.clarificationReason },
+      });
+    } else if (!this.identityManager || !input.identity) {
+      reply = "暂时无法验证你的飞书项目身份，因此没有修改工单标题。请联系管理员检查个人授权。";
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "ticket_title_update",
+        status: "failed",
+        detail: { error: "verified Meegle identity is unavailable" },
+      });
+    } else {
+      if ("targetWorkItemId" in policy) {
+        targetWorkItemId = policy.targetWorkItemId;
+      } else {
+        const matches = await this.identityManager.resolveWorkItemTitleTarget({
+          identity: input.identity,
+          candidateWorkItemIds: policy.candidateWorkItemIds,
+          targetType: policy.targetWorkItemType,
+        });
+        if (matches.length !== 1) {
+          reply = [
+            `没有修改标题：当前关联工单中找到 ${matches.length} 张符合指定类型的工单。`,
+            "请提供明确工单号后重新发送，例如：工单 #7132695930 重命名为：新的标题。",
+          ].join("\n");
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "ticket_title_update",
+            status: "info",
+            detail: {
+              targetType: policy.targetWorkItemType,
+              matchingIds: matches.map((match) => match.workItemId),
+            },
+          });
+        } else {
+          targetWorkItemId = matches[0]!.workItemId;
+        }
+      }
+
+      if (targetWorkItemId) {
+        try {
+          const updated = await this.identityManager.renameWorkItemTitle({
+            identity: input.identity,
+            workItemId: targetWorkItemId,
+            newTitle: policy.newTitle,
+          });
+          reply = updated.changed
+            ? [
+                `已修改工单 #${updated.workItemId} 的标题并回读确认：`,
+                `- 原标题：${updated.previousName}`,
+                `- 新标题：${updated.name}`,
+                "其他字段、负责人、附件、关联和流程节点均未修改。",
+              ].join("\n")
+            : `工单 #${updated.workItemId} 的标题已经是“${updated.name}”，无需重复修改。`;
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "ticket_title_update",
+            status: "succeeded",
+            detail: {
+              workItemId: updated.workItemId,
+              changed: updated.changed,
+              previousName: updated.previousName,
+              newName: updated.name,
+            },
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          reply = [
+            `未能确认工单 #${targetWorkItemId} 的标题修改结果。`,
+            "请先打开该工单核对当前标题，不要立即重复发送修改指令；其他工单不会被修改。",
+          ].join("\n");
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "ticket_title_update",
+            status: "failed",
+            detail: { workItemId: targetWorkItemId, error: reason.slice(0, 1_000) },
+          });
+        }
+      }
+    }
+
+    const finalReply = truncate(reply!, this.config.limits.maxReplyChars);
+    const conversationKey = input.conversationKey ?? input.messageKey;
+    this.store.addConversationMessage({
+      conversationKey,
+      role: "user",
+      content: message.content,
+      sourceMessageId: message.messageId,
+      createdAt: message.createTime,
+    });
+    this.store.addConversationMessage({
+      conversationKey,
+      role: "assistant",
+      content: finalReply,
+      sourceMessageId: `response:${message.messageId}`,
+    });
+    this.store.completeMessage(message.messageId, finalReply);
+    await this.channel.send(
+      message.chatId,
+      { markdown: finalReply },
+      { replyTo: message.messageId },
+    );
+    this.store.recordOperation({
+      messageId: message.messageId,
+      step: "reply_sent",
+      status: "succeeded",
+    });
+    logger.info("message.title_update_completed", {
+      messageId: message.messageId,
+      ...(targetWorkItemId ? { workItemId: targetWorkItemId } : {}),
+      mode: policy.mode,
+    });
   }
 
   private async downloadResources(message: NormalizedMessage): Promise<DownloadedResource[]> {

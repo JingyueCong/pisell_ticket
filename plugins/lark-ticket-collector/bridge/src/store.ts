@@ -644,6 +644,65 @@ export class BridgeStore {
     return candidates.length === 1 ? draftSnapshot(candidates[0]!) : undefined;
   }
 
+  recentDraftByReference(input: {
+    conversationKey: string;
+    chatId: string;
+    senderId: string;
+    referenceMessageIds?: string[];
+    newerThan: number;
+  }): DraftSnapshot | undefined {
+    const exact = this.db
+      .prepare(`
+        SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
+               missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+        FROM ticket_drafts
+        WHERE conversation_key = ? AND chat_id = ? AND sender_id = ?
+          AND status IN ('open', 'closed') AND updated_at >= ?
+        ORDER BY updated_at DESC
+        LIMIT 2
+      `)
+      .all(
+        input.conversationKey,
+        input.chatId,
+        input.senderId,
+        input.newerThan,
+      ) as DraftRow[];
+    if (exact.length === 1) return draftSnapshot(exact[0]!);
+
+    const referenceMessageIds = [
+      ...new Set(
+        (input.referenceMessageIds ?? [])
+          .map((messageId) => messageId.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (!referenceMessageIds.length) return undefined;
+    const placeholders = referenceMessageIds.map(() => "?").join(", ");
+    const referenced = this.db
+      .prepare(`
+        SELECT DISTINCT
+               draft.id, draft.conversation_key, draft.chat_id, draft.sender_id,
+               draft.ticket_type, draft.summary, draft.missing_fields_json,
+               draft.work_item_ids_json, draft.resources_json, draft.updated_at,
+               draft.expires_at
+        FROM conversation_messages AS message
+        JOIN ticket_drafts AS draft
+          ON draft.conversation_key = message.conversation_key
+        WHERE message.source_message_id IN (${placeholders})
+          AND draft.chat_id = ? AND draft.sender_id = ?
+          AND draft.status IN ('open', 'closed') AND draft.updated_at >= ?
+        ORDER BY draft.updated_at DESC
+        LIMIT 2
+      `)
+      .all(
+        ...referenceMessageIds,
+        input.chatId,
+        input.senderId,
+        input.newerThan,
+      ) as DraftRow[];
+    return referenced.length === 1 ? draftSnapshot(referenced[0]!) : undefined;
+  }
+
   applyDraftUpdate(input: {
     conversationKey: string;
     chatId: string;

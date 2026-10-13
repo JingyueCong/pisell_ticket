@@ -255,6 +255,90 @@ test("customer CRM lookup does not treat an unrelated nested user name as the cu
   }
 });
 
+test("title updates write only the name field and require a matching readback", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const calls: string[][] = [];
+  let readCount = 0;
+  const runner: ProcessRunner = async (executable, args) => {
+    calls.push([executable, ...args]);
+    if (args.includes("get")) {
+      readCount += 1;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          work_item_id: "7132695930",
+          name:
+            readCount === 1
+              ? "旧标题"
+              : "新版 POS 无法打印小票",
+          work_item_type_key: "6886d47112cff2ae4ae279e3",
+        }),
+        stderr: "",
+      };
+    }
+    return { exitCode: 0, stdout: JSON.stringify({ data: {} }), stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(
+      config(directory),
+      runner,
+      async () => undefined,
+    ).renameWorkItemTitle({
+      identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+      workItemId: "7132695930",
+      newTitle: "新版 POS 无法打印小票",
+    });
+    assert.equal(result.previousName, "旧标题");
+    assert.equal(result.name, "新版 POS 无法打印小票");
+    assert.equal(result.changed, true);
+    assert.equal(calls.length, 3);
+    const update = calls.find((call) => call.includes("update"));
+    assert.ok(update);
+    assert.equal(update[update.indexOf("--profile") + 1], "lark-alice");
+    assert.deepEqual(JSON.parse(update[update.indexOf("--fields") + 1]!), [
+      { field_key: "name", field_value: "新版 POS 无法打印小票" },
+    ]);
+    assert.ok(!update.some((value) => /create|role_operate|node/i.test(value)));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a related title target is selected by its verified work item type", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const runner: ProcessRunner = async (_executable, args) => {
+    const id = args[args.indexOf("--work-item-id") + 1];
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        work_item_id: id,
+        name: id === "7132695930" ? "客服标题" : "阻断标题",
+        work_item_type: {
+          id:
+            id === "7132695930"
+              ? "6886d47112cff2ae4ae279e3"
+              : "67df88cf656f61b9b41455d3",
+          name: id === "7132695930" ? "客服工单" : "阻断性问题",
+        },
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveWorkItemTitleTarget({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        candidateWorkItemIds: ["7132695930", "7132856228"],
+        targetType: "blocking_issue",
+      });
+    assert.deepEqual(result.map((item) => item.workItemId), ["7132856228"]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("customer CRM candidates can be read back by their stored IDs without writes", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   const calls: string[][] = [];

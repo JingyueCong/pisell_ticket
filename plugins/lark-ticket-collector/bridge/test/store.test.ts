@@ -277,9 +277,9 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
       update: {
         action: "close",
         ticketType: "内容维护",
-        summary: "已创建 #123",
+        summary: "已创建 #7130000123",
         missingFields: [],
-        workItemIds: ["123"],
+        workItemIds: ["7130000123"],
       },
       ttlMs: 100,
       now: 1_070,
@@ -292,6 +292,25 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
         now: 1_080,
       }),
       undefined,
+    );
+    assert.equal(
+      store.recentDraftByReference({
+        conversationKey,
+        chatId: "oc_1",
+        senderId: "ou_1",
+        newerThan: 1_000,
+      })?.workItemIds[0],
+      "7130000123",
+    );
+    assert.equal(
+      store.recentDraftByReference({
+        conversationKey: "oc_1:ou_1:scope:title_reply",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        referenceMessageIds: ["om_followup_anchor"],
+        newerThan: 1_000,
+      })?.id,
+      opened.id,
     );
 
     const expiring = store.applyDraftUpdate({
