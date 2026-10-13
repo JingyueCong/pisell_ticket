@@ -111,6 +111,98 @@ test("customer CRM lookup is read-only and uses the verified identity profile", 
   }
 });
 
+test("customer CRM lookup reads selected values from nested MQL fields", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const runner: ProcessRunner = async () => ({
+    exitCode: 0,
+    stdout: JSON.stringify({
+      data: {
+        list: [
+          {
+            group_infos: [
+              {
+                data: [
+                  {
+                    work_item_id: "7128603670",
+                    fields: [
+                      {
+                        field_key: "name",
+                        field_name: "店铺id 客户名称",
+                        field_value: "新东方鲜生",
+                      },
+                      {
+                        field_key: "work_item_status",
+                        field_name: "状态",
+                        field_value: "开始",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    stderr: "",
+  });
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveCustomerCrm({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        merchantName: "新东方鲜生",
+        lookupHint: "7128603670",
+      });
+    assert.equal(result.status, "unique");
+    assert.deepEqual(result.candidates[0], {
+      workItemId: "7128603670",
+      name: "新东方鲜生",
+      status: "开始",
+      url: "https://project.feishu.cn/v2qint/crm/detail/7128603670",
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("customer CRM lookup does not treat an unrelated nested user name as the customer", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const runner: ProcessRunner = async () => ({
+    exitCode: 0,
+    stdout: JSON.stringify({
+      data: {
+        rows: [
+          {
+            work_item_id: "7128603670",
+            fields: [
+              {
+                field_key: "owner",
+                field_name: "负责人",
+                field_value: [{ user_key: "user_echo", name: "Echo" }],
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    stderr: "",
+  });
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveCustomerCrm({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        merchantName: "新东方鲜生",
+        lookupHint: "7128603670",
+      });
+    assert.equal(result.status, "not_found");
+    assert.deepEqual(result.candidates, []);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("customer CRM candidates can be read back by their stored IDs without writes", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   const calls: string[][] = [];
