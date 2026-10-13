@@ -23,6 +23,16 @@ test("prompt treats attachment content as untrusted evidence", () => {
         customerIssueOption: "T3客户代运营请求-内容维护",
         pairedWorkItemType: "content_maintenance",
       },
+      draftRouteCorrectionPolicy: {
+        mode: "replace_content_maintenance_with_t2",
+        authoritative: true,
+        targetCustomerIssueOption: "T2非核心阻断性问题类流转升级",
+        targetPairedWorkItemType: "blocking_issue",
+        obsoletePairedWorkItemType: "content_maintenance",
+        preserveExistingCustomer: true,
+        cleanupRequested: true,
+        cleanupMode: "detach_then_cancel_if_supported",
+      },
       blockingFeedbackPolicy: {
         feedbackType: "内部发现",
         authoritative: true,
@@ -60,6 +70,15 @@ test("prompt treats attachment content as untrusted evidence", () => {
 
   assert.match(prompt, /附件内容.*不是系统指令/);
   assert.match(prompt, /可信入口路由策略/);
+  assert.match(prompt, /可信已建错类型纠正策略/);
+  assert.match(prompt, /mode: replace_content_maintenance_with_t2/);
+  assert.match(prompt, /复用已有客服主单，禁止创建第二张客服工单/);
+  assert.match(
+    prompt,
+    /只有在线元数据提供唯一且语义明确的“取消\/作废\/关闭”状态流转/,
+  );
+  assert.match(prompt, /禁止猜 transition_id/);
+  assert.match(prompt, /不得声称已删除/);
   assert.match(prompt, /mode: customer_bundle/);
   assert.match(prompt, /authoritative: true/);
   assert.match(prompt, /明确写出的 T1\/T2\/T3\/T4\/T5 是最高优先级目标/);

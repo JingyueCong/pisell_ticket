@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deriveDraftRouteCorrectionPolicy,
   draftIncludesContentMaintenance,
   enforceDraftRouteContinuation,
   isDraftRouteCorrection,
@@ -40,6 +41,62 @@ test("route corrections continue the referenced draft instead of opening a blank
       continued: true,
     },
   );
+});
+
+test("a post-creation T3-to-T2 correction is locked to the existing bundle", () => {
+  const createdT3: DraftSnapshot = {
+    ...activeDraft,
+    id: "draft_t3_created",
+    ticketType: "客服工单 + T3内容维护",
+    summary: "已创建客服工单并关联内容维护工单",
+    workItemIds: ["7133330739", "7133330740"],
+  };
+  const messageText = "创建错了，是T2工单，请调整，删除内容工单";
+
+  assert.equal(isDraftRouteCorrection(messageText), true);
+  assert.deepEqual(
+    deriveDraftRouteCorrectionPolicy({ messageText, activeDraft: createdT3 }),
+    {
+      mode: "replace_content_maintenance_with_t2",
+      authoritative: true,
+      targetCustomerIssueOption: "T2非核心阻断性问题类流转升级",
+      targetPairedWorkItemType: "blocking_issue",
+      obsoletePairedWorkItemType: "content_maintenance",
+      preserveExistingCustomer: true,
+      cleanupRequested: true,
+      cleanupMode: "detach_then_cancel_if_supported",
+    },
+  );
+});
+
+test("post-creation cleanup policy does not affect normal or pre-submit routes", () => {
+  const cases: Array<{ messageText: string; activeDraft?: DraftSnapshot }> = [
+    { messageText: "创建一张T2工单", activeDraft },
+    { messageText: "查询T2工单，删除内容工单", activeDraft },
+    {
+      messageText: "创建错了，是T2工单，请调整，删除内容工单",
+      activeDraft: {
+        ...activeDraft,
+        ticketType: "客服工单 + T3内容维护",
+        workItemIds: [],
+      },
+    },
+    {
+      messageText: "创建错了，是T2工单，请调整，删除内容工单",
+      activeDraft: { ...activeDraft, ticketType: "客服工单 + T2阻断性问题" },
+    },
+    {
+      messageText: "另外新建一张T2工单，并删除旧内容工单",
+      activeDraft: {
+        ...activeDraft,
+        ticketType: "客服工单 + T3内容维护",
+        workItemIds: ["1", "2"],
+      },
+    },
+  ];
+  for (const input of cases) {
+    assert.equal(deriveDraftRouteCorrectionPolicy(input), undefined, input.messageText);
+  }
 });
 
 test("an explicit request for another new ticket remains a new draft", () => {

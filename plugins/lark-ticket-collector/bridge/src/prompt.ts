@@ -56,6 +56,7 @@ export function buildAgentPrompt(
   const visitRecord = envelope.visitRecord;
   const customerCandidateContext = request.customerCandidateContext;
   const routePolicy = envelope.routePolicy;
+  const draftRouteCorrectionPolicy = envelope.draftRouteCorrectionPolicy;
   const blockingFeedbackPolicy = envelope.blockingFeedbackPolicy;
   const routePolicyText = routePolicy
     ? [
@@ -73,6 +74,18 @@ export function buildAgentPrompt(
         `- authoritative: ${blockingFeedbackPolicy.authoritative}`,
         `- source: ${blockingFeedbackPolicy.source}`,
         `- internal_discoverer: ${blockingFeedbackPolicy.internalDiscoverer}`,
+      ].join("\n")
+    : "- 不适用";
+  const draftRouteCorrectionPolicyText = draftRouteCorrectionPolicy
+    ? [
+        `- mode: ${draftRouteCorrectionPolicy.mode}`,
+        `- authoritative: ${draftRouteCorrectionPolicy.authoritative}`,
+        `- target_customer_issue_option: ${draftRouteCorrectionPolicy.targetCustomerIssueOption}`,
+        `- target_paired_work_item_type: ${draftRouteCorrectionPolicy.targetPairedWorkItemType}`,
+        `- obsolete_paired_work_item_type: ${draftRouteCorrectionPolicy.obsoletePairedWorkItemType}`,
+        `- preserve_existing_customer: ${draftRouteCorrectionPolicy.preserveExistingCustomer}`,
+        `- cleanup_requested: ${draftRouteCorrectionPolicy.cleanupRequested}`,
+        `- cleanup_mode: ${draftRouteCorrectionPolicy.cleanupMode}`,
       ].join("\n")
     : "- 不适用";
   const producerSourceText = producerSource
@@ -155,6 +168,8 @@ export function buildAgentPrompt(
 - 员工明确写出的 T1/T2/T3/T4/T5 是最高优先级目标，高于同句中的“内容工单”“内容维护”“异常”等泛化词；例如“创建内容工单并关联 T2 工单”必须按可信策略创建客服 + T2 阻断配套，不得因“内容工单”改成 T3。被“不要/不用/取消/改成/换成”明确否定或替换的旧等级不算目标，以替代后的明确等级为准。
 - 未出现其他明确 T 等级时，“创建内容维护工单”“创建内容工单”及“T3 工单”默认表示客服工单 + T3 内容维护配套；即使同一消息还要求检查原因、异常或 Sold Out，也不得改判为 T1/T2。只有员工明确说“单独/独立/仅/只创建内容维护工单或内容工单”时，才只建内容维护。员工无需再写“配套”。同理，T1/T2/T5、客户刷卡机和风控处理的创建别名按可信策略进入客服 bundle；T4、内部跟进、客户情绪/公关只建客服工单。
 - customer_bundle 的完成条件是客服主单和指定配套项均已创建或复用、客服外向关联已回读验证；新建配套项还必须写入并回读其反向客服关联。未获得客服工单 ID 前禁止创建配套项；不得把只有配套项或只有客服项的结果报告为成功。若中途部分失败，保留真实 ID 并只续跑缺失步骤。
+- “可信已建错类型纠正策略”存在且 authoritative=true 时，它只处理当前活动草稿，不是新建 bundle：必须先逐个实时回读 active draft 的 work_item_ids 并按真实类型分类；复用已有客服主单，禁止创建第二张客服工单。先把客服“对应问题类型”更新为策略指定值，再创建或复用目标 T2 阻断项、完成双向关联并回读；只有这些步骤全部成功后，才解除客服与误建内容维护项的关联。不得删除附件，不得把旧内容工单的附件迁移结果冒充为目标 T2 的归档结果。
+- 纠错策略中的 cleanup_requested=true 是对误建配套项的明确处置授权，但不是硬删除授权。先回读误建项及在线工作流；只有在线元数据提供唯一且语义明确的“取消/作废/关闭”状态流转，并且该动作不会修改其他工单时，才可执行该流转并回读验证。没有唯一安全流转时只解除关联、保留误建项并明确告诉员工需要管理员关闭；禁止猜 transition_id、禁止 confirm 普通业务节点、禁止物理删除，也不得声称已删除。任一步失败均保留全部实际 ID，用 draft.action=update 续跑缺失步骤，不得从头重建。
 - 附件归档完全由 Bridge 的确定性代码执行。你不得调用 \`attachment +upload\`，也不得为了附件调用 \`workitem update\`；不得自行拼接或写入 multi-file 字段。创建或复用工作项后，你只负责在结构化 \`attachment_archive.targets\` 中准确返回每个需要归档附件的 \`work_item_id\` 与在线元数据确认过的附件 \`field_key\`，每个目标的 \`expected_files\` 填本轮可读原始附件数、\`verified_files=0\`，整体 \`status=pending\`。Bridge 会按目标逐张执行“回读完整旧数组→上传一张→原样保留旧对象及其 uid/url/未知字段→白名单生成一个新 \`{name,type,size,fileToken}\`→追加写回→立即回读”，避免多个简化对象一次写入触发平台 \`unique\` 校验；附件 token 不跨工作项复用。附件路径不得列为缺失业务字段，也不得因等待 Bridge 归档而向员工追问。
 - 结构化输出的 \`work_item_outcomes\` 必须逐项区分本轮工作项状态：仅查重或检索得到但尚未选用的候选写 \`disposition=queried\`；本轮成功创建并回读写 \`created\`；员工明确确认复用且已回读写 \`reused\`；本轮实际更新并回读既有目标写 \`updated\`。\`role\` 分为客服主单 \`customer\`、配套项 \`paired\`、独立事项 \`standalone\`。禁止把查重命中的候选标为 created/reused/updated；员工尚未回复“复用”时只能是 queried。bridge 只会对 created/reused 的 customer 执行“创建工单”节点负责人校正。
 - 结构化输出的 \`attachment_archive\` 是 Bridge 的附件目标清单与强制完成门禁。每个原始附件写入一个目标工单字段计为一个 binding；例如 6 张图分别写入客服和内容维护两张工单时，\`expected_bindings=12\`。有业务附件且工作项已经 created/reused/updated 时，你必须给出所有目标并返回 \`status=pending\`，不能自行返回 verified；Bridge 执行后会用真实回读结果覆盖状态。没有业务附件时用 \`not_applicable\`；仍缺工单 ID/字段时用 \`pending\`。只有 queried 候选时不得宣称工单已创建或关联，也不得触发附件部分完成门禁。
@@ -209,6 +224,9 @@ export function buildAgentPrompt(
 
 可信入口路由策略（服务端判定；authoritative=true 时必须执行）：
 ${routePolicyText}
+
+可信已建错类型纠正策略（仅命中当前活动草稿中“误建 T3、明确改为 T2 并删除内容工单”的窄场景）：
+${draftRouteCorrectionPolicyText}
 
 可信阻断反馈类型策略（仅用于新建阻断性问题；authoritative=true 时必须执行）：
 ${blockingFeedbackPolicyText}

@@ -128,6 +128,17 @@ export interface BlockingFeedbackPolicy {
   internalDiscoverer: "verified_submitter" | "omit";
 }
 
+export interface DraftRouteCorrectionPolicy {
+  mode: "replace_content_maintenance_with_t2";
+  authoritative: true;
+  targetCustomerIssueOption: "T2非核心阻断性问题类流转升级";
+  targetPairedWorkItemType: "blocking_issue";
+  obsoletePairedWorkItemType: "content_maintenance";
+  preserveExistingCustomer: true;
+  cleanupRequested: boolean;
+  cleanupMode: "detach_then_cancel_if_supported";
+}
+
 export interface InboundEnvelope {
   messageId: string;
   chatId: string;
@@ -142,6 +153,7 @@ export interface InboundEnvelope {
   createTime: number;
   resources: DownloadedResource[];
   routePolicy?: IntakeRoutePolicy;
+  draftRouteCorrectionPolicy?: DraftRouteCorrectionPolicy;
   blockingFeedbackPolicy?: BlockingFeedbackPolicy;
   contentMaintenanceProducerSource?: ContentMaintenanceProducerSource;
   visitRecord?: VisitRecordEvidence;

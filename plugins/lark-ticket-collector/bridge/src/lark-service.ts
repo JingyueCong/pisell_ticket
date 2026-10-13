@@ -23,6 +23,7 @@ import {
   customerIntakeOwnerTarget,
 } from "./work-item-outcomes.js";
 import {
+  deriveDraftRouteCorrectionPolicy,
   draftIncludesContentMaintenance,
   enforceDraftRouteContinuation,
 } from "./draft-continuation.js";
@@ -420,7 +421,21 @@ export class LarkTicketService {
           message.threadId || message.rootId || message.replyToMessageId
         ),
       });
-      const preliminaryRoute = deriveIntakeRoutePolicy(message.content);
+      const draftRouteCorrectionPolicy = deriveDraftRouteCorrectionPolicy({
+        messageText: message.content,
+        ...(activeDraft ? { activeDraft } : {}),
+      });
+      const preliminaryRoute = draftRouteCorrectionPolicy
+        ? {
+            mode: "customer_bundle" as const,
+            authoritative: true,
+            customerIssueOption:
+              draftRouteCorrectionPolicy.targetCustomerIssueOption,
+            pairedWorkItemType:
+              draftRouteCorrectionPolicy.targetPairedWorkItemType,
+            reason: "active_draft_replace_content_maintenance_with_t2",
+          }
+        : deriveIntakeRoutePolicy(message.content);
       const explicitContentMaintenance =
         preliminaryRoute.pairedWorkItemType === "content_maintenance" ||
         preliminaryRoute.standaloneWorkItemType === "content_maintenance";
@@ -460,6 +475,10 @@ export class LarkTicketService {
         meegleIdentity,
         visitRecord,
       );
+      if (draftRouteCorrectionPolicy) {
+        envelope.draftRouteCorrectionPolicy = draftRouteCorrectionPolicy;
+        envelope.routePolicy = preliminaryRoute;
+      }
       const contextKey = activeDraft?.conversationKey ?? messageKey;
       const userTranscript = this.transcriptText(envelope);
       const history = this.store.recentConversation(
@@ -505,6 +524,14 @@ export class LarkTicketService {
                   envelope.blockingFeedbackPolicy.feedbackType,
                 blockingFeedbackSource:
                   envelope.blockingFeedbackPolicy.source,
+              }
+            : {}),
+          ...(envelope.draftRouteCorrectionPolicy
+            ? {
+                draftRouteCorrectionMode:
+                  envelope.draftRouteCorrectionPolicy.mode,
+                cleanupRequested:
+                  envelope.draftRouteCorrectionPolicy.cleanupRequested,
               }
             : {}),
         },
