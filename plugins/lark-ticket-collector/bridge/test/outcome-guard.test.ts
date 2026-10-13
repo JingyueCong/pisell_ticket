@@ -161,6 +161,116 @@ test("a deterministic CRM selection clears the generic customer missing field", 
   assert.doesNotMatch(guarded.result.text, /客户\/店铺/u);
 });
 
+test("a complete duplicate-candidate reply is preserved", () => {
+  const originalText = [
+    "系统发现以下可能重复的工单：",
+    "1. 菜单图片更新（#7062811769）",
+    "2. 菜单配置调整（#6856848454）",
+    "请回复“复用 #工单号”，或回复“仍创建”。",
+  ].join("\n");
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "bella 企业微信 all" },
+    history: [],
+    activeDraft,
+    result: result({
+      text: originalText,
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: "查重发现两个历史候选",
+        missingFields: ["重复候选处理选择（仍创建或复用）"],
+        workItemIds: ["7062811769", "6856848454"],
+      },
+      workItemOutcomes: [
+        { workItemId: "7062811769", role: "customer", disposition: "queried" },
+        { workItemId: "6856848454", role: "paired", disposition: "queried" },
+      ],
+    }),
+  });
+
+  assert.equal(guarded.result.text, originalText);
+  assert.deepEqual(guarded.result.draft.missingFields, ["重复候选处理选择"]);
+  assert.doesNotMatch(guarded.result.text, /请补充该信息/u);
+});
+
+test("duplicate candidates receive a deterministic choice list when agent text is incomplete", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "继续" },
+    history: [],
+    activeDraft,
+    result: result({
+      text: "请补充重复候选处理选择。",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: "查重发现三个历史候选",
+        missingFields: ["重复候选处理选择"],
+        workItemIds: ["7062811769", "6856848454", "7062700144"],
+      },
+      workItemOutcomes: [
+        { workItemId: "7062811769", role: "customer", disposition: "queried" },
+        { workItemId: "6856848454", role: "paired", disposition: "queried" },
+        { workItemId: "7062700144", role: "paired", disposition: "queried" },
+      ],
+    }),
+  });
+
+  assert.match(guarded.result.text, /1\. 工单 #7062811769/u);
+  assert.match(guarded.result.text, /2\. 工单 #6856848454/u);
+  assert.match(guarded.result.text, /3\. 工单 #7062700144/u);
+  assert.match(guarded.result.text, /复用 #工单号/u);
+  assert.match(guarded.result.text, /仍创建/u);
+  assert.doesNotMatch(guarded.result.text, /重复候选处理选择：请补充该信息/u);
+});
+
+test("duplicate choices and ordinary missing fields are rendered together", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "继续" },
+    history: [],
+    activeDraft,
+    result: result({
+      text: "请补充信息。",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: "等待来源和重复候选选择",
+        missingFields: ["问题来源", "重复候选处理选择"],
+        workItemIds: ["7062811769"],
+      },
+      workItemOutcomes: [
+        { workItemId: "7062811769", role: "customer", disposition: "queried" },
+      ],
+    }),
+  });
+
+  assert.match(guarded.result.text, /问题来源/u);
+  assert.match(guarded.result.text, /工单 #7062811769/u);
+  assert.match(guarded.result.text, /复用 #工单号/u);
+});
+
+test("missing duplicate details ask for a retry instead of leaking an internal field", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "继续" },
+    history: [],
+    activeDraft,
+    result: result({
+      text: "请补充重复候选处理选择。",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: "查重结果不完整",
+        missingFields: ["重复候选处理选择"],
+        workItemIds: [],
+      },
+      workItemOutcomes: [],
+    }),
+  });
+
+  assert.match(guarded.result.text, /候选详情读取不完整/u);
+  assert.match(guarded.result.text, /重新查重/u);
+  assert.doesNotMatch(guarded.result.text, /请补充该信息/u);
+});
+
 test("a claimed interface failure without broker evidence is not presented as fact", () => {
   const guarded = enforceDeterministicOutcome({
     envelope: { ...envelope, content: "继续提交" },

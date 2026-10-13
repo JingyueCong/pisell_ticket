@@ -16,6 +16,7 @@ const MERCHANT_REPORTER = /商家问题提出人|field_91fbb2/iu;
 const CUSTOMER = /客户管理|客户\/店铺|客户或店铺|CRM/iu;
 const NAME = /(?:^|[：:\s])名称(?:$|[：:\s])|工单名称/iu;
 const DESCRIPTION = /问题描述|任务描述|(?:^|[：:\s])描述(?:$|[：:\s])/iu;
+const DUPLICATE_SELECTION = /重复(?:工单)?候选.*(?:处理)?选择|仍创建或复用|复用或仍创建/iu;
 const KNOWN_PROBLEM_SOURCE =
   /企业微信|企微|WhatsApp|客服(?:专用)?邮箱|飞书商家群|Zendesk|线下销售\s*[/／]\s*运营转述|线下销售|运营转述/iu;
 const KNOWN_ISSUE_TYPE =
@@ -58,6 +59,10 @@ function canonicalMissingFields(values: string[]): string[] {
     }
     if (DESCRIPTION.test(value)) {
       add("问题描述");
+      recognized = true;
+    }
+    if (DUPLICATE_SELECTION.test(value)) {
+      add("重复候选处理选择");
       recognized = true;
     }
     if (!recognized && !/(?:接口|API|配置|元数据)/iu.test(value)) add(value);
@@ -144,9 +149,33 @@ function candidateSelectionText(candidates: CustomerCrmCandidate[]): string[] {
   ];
 }
 
+function duplicateSelectionText(workItemIds: string[]): string[] {
+  if (!workItemIds.length) {
+    return [
+      "系统检测到可能存在重复工单，但候选详情读取不完整。",
+      "请回复“重新查重”，系统会重新读取候选；当前草稿和附件会继续保留。",
+    ];
+  }
+  return [
+    "系统发现以下可能重复的工单：",
+    ...workItemIds.map((workItemId, index) => `${index + 1}. 工单 #${workItemId}`),
+    "请回复“复用 #工单号”，或回复“仍创建”以新建独立工单。",
+  ];
+}
+
+function hasCompleteDuplicateReply(text: string, workItemIds: string[]): boolean {
+  return (
+    workItemIds.length > 0 &&
+    workItemIds.every((workItemId) => text.includes(workItemId)) &&
+    /复用/u.test(text) &&
+    /仍创建|新建/u.test(text)
+  );
+}
+
 function clarificationText(
   fields: string[],
   customerCandidates: CustomerCrmCandidate[] = [],
+  duplicateWorkItemIds: string[] = [],
 ): string {
   const hasAmbiguousCustomer =
     fields.includes("客户/店铺") && customerCandidates.length > 1;
@@ -155,6 +184,13 @@ function clarificationText(
       return [
         "当前草稿尚未提交，已保留已有文字和附件。",
         ...candidateSelectionText(customerCandidates),
+        "选择后会继续处理当前草稿，不会从头重复建单。",
+      ].join("\n\n");
+    }
+    if (fields[0] === "重复候选处理选择") {
+      return [
+        "当前草稿尚未提交，已保留已有文字和附件。",
+        ...duplicateSelectionText(duplicateWorkItemIds),
         "选择后会继续处理当前草稿，不会从头重复建单。",
       ].join("\n\n");
     }
@@ -172,6 +208,10 @@ function clarificationText(
         ? candidateSelectionText(customerCandidates).map((line, index) =>
             index === 0 ? `- ${line}` : `  ${line}`,
           )
+        : field === "重复候选处理选择"
+          ? duplicateSelectionText(duplicateWorkItemIds).map((line, index) =>
+              index === 0 ? `- ${line}` : `  ${line}`,
+            )
         : [`- ${clarificationLine(field)}`],
     ),
     "补充后会继续处理当前草稿，不会从头重复建单。",
@@ -209,7 +249,24 @@ export function enforceDeterministicOutcome(input: {
   }
 
   if (missingFields.length > 0) {
-    const text = clarificationText(missingFields, input.customerCandidates);
+    const duplicateWorkItemIds = [
+      ...new Set(
+        input.result.workItemOutcomes
+          .filter((outcome) => outcome.disposition === "queried")
+          .map((outcome) => outcome.workItemId),
+      ),
+    ];
+    const duplicateOnly =
+      missingFields.length === 1 && missingFields[0] === "重复候选处理选择";
+    const text =
+      duplicateOnly &&
+      hasCompleteDuplicateReply(input.result.text, duplicateWorkItemIds)
+        ? input.result.text
+        : clarificationText(
+            missingFields,
+            input.customerCandidates,
+            duplicateWorkItemIds,
+          );
     return {
       result: {
         ...input.result,
