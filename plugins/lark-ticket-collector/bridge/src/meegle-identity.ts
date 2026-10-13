@@ -150,21 +150,133 @@ function scalarValue(value: unknown): string | undefined {
   return undefined;
 }
 
+function typedFieldValue(object: Record<string, unknown>): string | undefined {
+  const valueKeys = [
+    "field_value",
+    "fieldValue",
+    "value",
+    "values",
+    "string_value",
+    "stringValue",
+    "text_value",
+    "textValue",
+    "bigint_value",
+    "bigintValue",
+    "long_value",
+    "longValue",
+    "int64_value",
+    "int64Value",
+    "integer_value",
+    "integerValue",
+    "number_value",
+    "numberValue",
+    "display_value",
+    "displayValue",
+    "raw_value",
+    "rawValue",
+  ];
+  for (const key of valueKeys) {
+    if (!Object.hasOwn(object, key)) continue;
+    const candidate = scalarValue(object[key]);
+    if (candidate) return candidate;
+    const nestedValue = object[key];
+    if (nestedValue && typeof nestedValue === "object" && !Array.isArray(nestedValue)) {
+      const nested = typedFieldValue(nestedValue as Record<string, unknown>);
+      if (nested) return nested;
+    }
+  }
+
+  const valueType = object.value_type ?? object.valueType;
+  if (valueType && typeof valueType === "object") {
+    if (Array.isArray(valueType)) {
+      for (const item of valueType) {
+        const candidate = scalarValue(item);
+        if (candidate) return candidate;
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          const nested = typedFieldValue(item as Record<string, unknown>);
+          if (nested) return nested;
+        }
+      }
+    } else {
+      const nested = typedFieldValue(valueType as Record<string, unknown>);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
+}
+
+function selectedFieldValue(
+  row: Record<string, unknown>,
+  expectedDescriptors: ReadonlySet<string>,
+): string | undefined {
+  for (const containerKey of ["fields", "work_item_fields", "workItemFields"]) {
+    const container = row[containerKey];
+    if (!container || typeof container !== "object" || Array.isArray(container)) continue;
+    for (const [key, value] of Object.entries(container as Record<string, unknown>)) {
+      if (!expectedDescriptors.has(normalized(key))) continue;
+      const candidate = scalarValue(value);
+      if (candidate) return candidate;
+    }
+  }
+
+  const objects: Array<Record<string, unknown>> = [];
+  collectObjects(row, objects);
+  for (const object of objects) {
+    const descriptors = [
+      object.field_key,
+      object.fieldKey,
+      object.field_name,
+      object.fieldName,
+      object.key,
+      object.label,
+    ]
+      .map(scalarValue)
+      .filter((value): value is string => Boolean(value))
+      .map(normalized);
+    if (!descriptors.some((descriptor) => expectedDescriptors.has(descriptor))) continue;
+    const candidate = typedFieldValue(object);
+    if (candidate) return candidate;
+  }
+  return undefined;
+}
+
 function customerCrmCandidates(value: unknown, projectKey: string): CustomerCrmCandidate[] {
   const objects: Array<Record<string, unknown>> = [];
   collectObjects(value, objects);
   const found = new Map<string, CustomerCrmCandidate>();
+  const workItemIdDescriptors = new Set(
+    ["work_item_id", "workItemId", "工作项ID", "工作项id"].map(normalized),
+  );
+  const nameDescriptors = new Set(
+    ["name", "title", "名称", "店铺id 客户名称"].map(normalized),
+  );
+  const statusDescriptors = new Set(
+    ["work_item_status", "workItemStatus", "status", "状态"].map(normalized),
+  );
   for (const object of objects) {
-    const workItemId = ["work_item_id", "workItemId", "工作项ID", "工作项id", "id"]
-      .map((key) => scalarValue(object[key]))
-      .find(Boolean);
-    const name = ["name", "名称", "title"]
-      .map((key) => scalarValue(object[key]))
-      .find(Boolean);
-    if (!workItemId || !name || found.has(workItemId)) continue;
-    const status = ["work_item_status", "workItemStatus", "状态", "status"]
-      .map((key) => scalarValue(object[key]))
-      .find(Boolean);
+    const hasSelectedFields = [
+      "fields",
+      "work_item_fields",
+      "workItemFields",
+      "moql_field_list",
+    ].some((key) => Object.hasOwn(object, key));
+    const workItemId =
+      ["work_item_id", "workItemId", "工作项ID", "工作项id", "id"]
+        .map((key) => scalarValue(object[key]))
+        .find(Boolean) ??
+      (hasSelectedFields
+        ? selectedFieldValue(object, workItemIdDescriptors)
+        : undefined);
+    if (!workItemId || found.has(workItemId)) continue;
+    const name =
+      ["name", "名称", "title"]
+        .map((key) => scalarValue(object[key]))
+        .find(Boolean) ?? selectedFieldValue(object, nameDescriptors);
+    if (!name) continue;
+    const status =
+      ["work_item_status", "workItemStatus", "状态", "status"]
+        .map((key) => scalarValue(object[key]))
+        .find(Boolean) ?? selectedFieldValue(object, statusDescriptors);
     found.set(workItemId, {
       workItemId,
       name,
