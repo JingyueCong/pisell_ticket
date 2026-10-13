@@ -115,6 +115,19 @@ export interface IntakeRoutePolicy {
   standaloneWorkItemType?: PairedWorkItemType;
 }
 
+export type BlockingFeedbackType = "内部发现" | "商家反馈";
+
+export interface BlockingFeedbackPolicy {
+  feedbackType: BlockingFeedbackType;
+  authoritative: true;
+  source:
+    | "employee_explicit_current"
+    | "employee_explicit_draft_context"
+    | "known_merchant_channel"
+    | "default_merchant";
+  internalDiscoverer: "verified_submitter" | "omit";
+}
+
 export interface InboundEnvelope {
   messageId: string;
   chatId: string;
@@ -129,6 +142,7 @@ export interface InboundEnvelope {
   createTime: number;
   resources: DownloadedResource[];
   routePolicy?: IntakeRoutePolicy;
+  blockingFeedbackPolicy?: BlockingFeedbackPolicy;
   contentMaintenanceProducerSource?: ContentMaintenanceProducerSource;
   visitRecord?: VisitRecordEvidence;
   meegleIdentity?: MeegleRequestIdentity;

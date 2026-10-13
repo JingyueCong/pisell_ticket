@@ -49,7 +49,7 @@
           "field_name": "内部发现人",
           "required_only_when_feedback_type_name": "内部发现"
         },
-        "ambiguous_feedback_type_action": "ask_user",
+        "ambiguous_feedback_type_action": "default_merchant_feedback",
         "refresh_option_ids_before_write": true
       },
       "handoff_to_yoko": true,

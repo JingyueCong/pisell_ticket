@@ -16,6 +16,7 @@ const MERCHANT_REPORTER = /商家问题提出人|field_91fbb2/iu;
 const CUSTOMER = /客户管理|客户\/店铺|客户或店铺|CRM/iu;
 const NAME = /(?:^|[：:\s])名称(?:$|[：:\s])|工单名称/iu;
 const DESCRIPTION = /问题描述|任务描述|(?:^|[：:\s])描述(?:$|[：:\s])/iu;
+const BLOCKING_FEEDBACK_TYPE = /反馈类型|field_10c5ea/iu;
 const DUPLICATE_SELECTION = /重复(?:工单)?候选.*(?:处理)?选择|仍创建或复用|复用或仍创建/iu;
 const KNOWN_PROBLEM_SOURCE =
   /企业微信|企微|WhatsApp|客服(?:专用)?邮箱|飞书商家群|Zendesk|线下销售\s*[/／]\s*运营转述|线下销售|运营转述/iu;
@@ -234,6 +235,11 @@ export function enforceDeterministicOutcome(input: {
   }
 
   let missingFields = canonicalMissingFields(input.result.draft.missingFields);
+  if (input.envelope.blockingFeedbackPolicy?.authoritative) {
+    missingFields = missingFields.filter(
+      (field) => !BLOCKING_FEEDBACK_TYPE.test(field),
+    );
+  }
   if (input.selectedCustomerCandidate) {
     missingFields = missingFields.filter((field) => field !== "客户/店铺");
   }

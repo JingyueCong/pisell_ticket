@@ -15,6 +15,10 @@ import type { BridgeConfig } from "./config.js";
 import { AgentBackendError, buildAgentFailureReply } from "./agent-failure.js";
 import { enforceAttachmentCompletion } from "./attachment-gate.js";
 import {
+  deriveBlockingFeedbackPolicy,
+  shouldApplyBlockingFeedbackPolicy,
+} from "./blocking-feedback.js";
+import {
   contentMaintenanceProducerTarget,
   customerIntakeOwnerTarget,
 } from "./work-item-outcomes.js";
@@ -463,6 +467,21 @@ export class LarkTicketService {
         this.config.limits.maxHistoryMessages,
         Date.now() - this.config.limits.maxHistoryAgeMs,
       );
+      if (
+        shouldApplyBlockingFeedbackPolicy({
+          ...(envelope.routePolicy
+            ? { routePolicy: envelope.routePolicy }
+            : {}),
+          ...(activeDraft ? { activeDraft } : {}),
+        })
+      ) {
+        envelope.blockingFeedbackPolicy = deriveBlockingFeedbackPolicy({
+          currentText: message.content,
+          priorUserTexts: history
+            .filter((entry) => entry.role === "user")
+            .map((entry) => entry.content),
+        });
+      }
       this.store.recordOperation({
         messageId: message.messageId,
         step: "intake_route_resolved",
@@ -479,6 +498,14 @@ export class LarkTicketService {
             : {}),
           ...(envelope.routePolicy?.standaloneWorkItemType
             ? { standaloneWorkItemType: envelope.routePolicy.standaloneWorkItemType }
+            : {}),
+          ...(envelope.blockingFeedbackPolicy
+            ? {
+                blockingFeedbackType:
+                  envelope.blockingFeedbackPolicy.feedbackType,
+                blockingFeedbackSource:
+                  envelope.blockingFeedbackPolicy.source,
+              }
             : {}),
         },
       });

@@ -103,6 +103,43 @@ test("first pass asks for source together with model-detected missing fields", (
   assert.match(guarded.result.text, /问题来源/);
 });
 
+test("authoritative blocking feedback policy removes feedback type from missing fields", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: {
+      ...envelope,
+      content: "创建 T2，这是内部发现",
+      routePolicy: {
+        mode: "customer_bundle",
+        authoritative: true,
+        customerIssueOption: "T2非核心阻断性问题类流转升级",
+        pairedWorkItemType: "blocking_issue",
+        reason: "t2_creation_alias",
+      },
+      blockingFeedbackPolicy: {
+        feedbackType: "内部发现",
+        authoritative: true,
+        source: "employee_explicit_current",
+        internalDiscoverer: "verified_submitter",
+      },
+    },
+    history: [],
+    result: result({
+      text: "请补充反馈类型。",
+      draft: {
+        action: "open",
+        ticketType: "客服工单 + T2 阻断性问题",
+        summary: "内部发现 POS 卡住，问题来源企业微信",
+        missingFields: ["反馈类型", "终端"],
+        workItemIds: [],
+      },
+    }),
+  });
+
+  assert.deepEqual(guarded.result.draft.missingFields, ["终端"]);
+  assert.doesNotMatch(guarded.result.text, /反馈类型/u);
+  assert.match(guarded.result.text, /终端/u);
+});
+
 test("ambiguous CRM candidates are listed instead of asking for the store again", () => {
   const guarded = enforceDeterministicOutcome({
     envelope: { ...envelope, content: "店铺 ID 8793" },

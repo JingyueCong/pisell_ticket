@@ -56,6 +56,7 @@ export function buildAgentPrompt(
   const visitRecord = envelope.visitRecord;
   const customerCandidateContext = request.customerCandidateContext;
   const routePolicy = envelope.routePolicy;
+  const blockingFeedbackPolicy = envelope.blockingFeedbackPolicy;
   const routePolicyText = routePolicy
     ? [
         `- mode: ${routePolicy.mode}`,
@@ -66,6 +67,14 @@ export function buildAgentPrompt(
         `- standalone_work_item_type: ${routePolicy.standaloneWorkItemType ?? "无"}`,
       ].join("\n")
     : "- 未提供；按技能普通路由";
+  const blockingFeedbackPolicyText = blockingFeedbackPolicy
+    ? [
+        `- feedback_type: ${blockingFeedbackPolicy.feedbackType}`,
+        `- authoritative: ${blockingFeedbackPolicy.authoritative}`,
+        `- source: ${blockingFeedbackPolicy.source}`,
+        `- internal_discoverer: ${blockingFeedbackPolicy.internalDiscoverer}`,
+      ].join("\n")
+    : "- 不适用";
   const producerSourceText = producerSource
     ? [
         `- source_chat_id: ${producerSource.chatId}`,
@@ -152,6 +161,7 @@ export function buildAgentPrompt(
 - 新建客服工单时，如果员工没有明确提供工单问题等级，默认填写三星；不得再把星级列为缺失项。员工明确提供 1、2、3 或 4 星时以明确值为准。该客服星级默认值不改变 T1/T2 配套阻断单按问题类型确定的 Lv 优先级；若联动 T3 内容维护，三星按技能映射为 Q1。
 - 新建任何类型工作项时，本轮表单中适用且可写的完成、交付、准备、截止、跟进、排期或计划类日期/时间字段统一采用以下优先级：员工明确提供的值 > 已核实来源工单可复制的值 > 默认当天。默认值一律使用 trusted_business_date_australia_melbourne，只表达日历日期，不默认具体时分。员工手动填写任何日期字段时，提供日期即视为完整，不得继续追问小时和分钟；员工主动提供了具体时间则可保留。底层字段即使要求毫秒时间戳，也必须按在线字段/项目时区把所选日历日期序列化，并在回读时核对显示日期，不能把接口格式要求转嫁给员工。计划类时间不得列为缺失项；事实日期没有依据时仍可询问，但同样只要求精确到日期。阻断性问题“发生时间”未提供时继续使用其已有的提交时刻默认。该规则不修改系统创建时间，也不批量更新历史工单。
 - 员工只说“创建工单”且本轮附件明确是企业微信/企微群、WhatsApp、客服邮箱、飞书商家群、Zendesk 或线下销售/运营转述等商家来源时，默认主单必须是客服工单；不得因为截图内容是已有功能异常就直接改成独立阻断性问题。若异常属于 T1/T2，按技能规则在客服工单之后自动创建或复用并关联阻断性问题。除非员工明确要求独立创建阻断性问题或 T-BUG，否则不得绕过客服主单。商家来源的配套阻断单反馈类型为“商家反馈”，不得索取或写入“内部发现人”。
+- “可信阻断反馈类型策略”只适用于本轮新建的独立阻断性问题，或客服 T1/T2 配套阻断项；不改客服工单的“问题来源”，也不借此修改复用的历史阻断项。authoritative=true 时必须精确按 feedback_type 写入阻断项的“反馈类型”，不得被客服问题来源、附件 OCR、模板默认或普通映射覆盖，也不得再把反馈类型列为缺项。internal_discoverer=verified_submitter 时，内部发现人必须取 verified_meegle_user；internal_discoverer=omit 时不得索取或写入内部发现人。员工在同一草稿中后续明确改成另一反馈类型时，Bridge 会更新该策略，以最新明确选择为准。
 - 客服“对应问题类型”包含 T1、T2、T3 客户代运营、T5 功能建议/改进、客户刷卡机或风控处理中的任一项时，客服工单与所有命中的配套工单必须作为同一严格 bundle 处理。先补齐每张草稿的创建必填值、刷新元数据并完成查重；任一配套草稿未就绪时，不得先创建客服工单或其他已就绪目标，只一次性询问全部缺项。全部就绪后才顺序创建或复用并验证每个客服外向关联；外部写入中断时保存已建 ID、只续跑缺失步骤，禁止重复创建或把单独客服工单报告为完成。T4 商务、内部跟进和客户情绪/公关只创建客服工单。
 - “可信内容维护制作人来源”由常驻桥接服务直接从配置群读取。员工在本轮文字或本轮图片/视频业务证据中明确写出“制作人/负责人/设计师/安排给/指派给 某人”时，该明确指派优先于轮班，但该姓名必须在 producer_roster 中唯一匹配；匹配失败或同时明确指定多人时必须停止创建并只询问制作人，不得偷偷回退到轮班。selection_mode=explicit_single 表示 Bridge 已从员工文字中完成上述校验，producer_names 中唯一姓名就是权威制作人。若附件证据明确指定制作人，则按 producer_roster 校验后使用，并在结构化 content_producer_selection 中返回该姓名与 source=attachment_evidence。没有明确指派时，selection_mode=round_robin_single 的 producer_names 中唯一姓名才是 Bridge 按群名顺序为本草稿分配的制作人，并在 content_producer_selection 中以 source=trusted_default 返回。员工文字明确指派则 source=employee_text。没有内容维护事项时 content_producer_selection 必须为 null。最终必须只把已校验的唯一姓名写入“制作人&交付人”，不得改用提交人、创建人或登录人；Bridge 会在创建后再次强制校验该角色恰好只有这一人。明确指派不会推进轮班游标；同一草稿后续继续使用该绑定，除非员工再次明确改派。只要可信名单已解析，就不得再次向员工索取制作人，也不得重复调用 lark-cli 读取群名。只有该元数据未配置、读取失败或未解析出姓名时，才允许调用 lark-cli 回退一次。
 - 新建内容维护工单时必须根据员工文字和本轮图片/视频证据自动填写“是否需要确认人确认”，不得再把该字段作为常规缺项追问。员工明确说明需要或不需要确认时优先采用其明确值；否则，证据中出现“复杂任务”“重点商家”、独立词 KA、VIP、Google/谷歌预约、游乐场、复杂餐饮，或清楚显示等价的高复杂度、多环节内容制作任务时填写“是”；其余普通、单一、简单任务填写“否”。不能仅因文字较长、附件较多或普通餐饮场景判为复杂。
@@ -199,6 +209,9 @@ export function buildAgentPrompt(
 
 可信入口路由策略（服务端判定；authoritative=true 时必须执行）：
 ${routePolicyText}
+
+可信阻断反馈类型策略（仅用于新建阻断性问题；authoritative=true 时必须执行）：
+${blockingFeedbackPolicyText}
 
 本轮已下载附件：
 ${resources}
