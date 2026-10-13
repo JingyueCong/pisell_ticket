@@ -172,28 +172,24 @@ test("customer CRM lookup reads the CLI moql field list row shape", async () => 
     exitCode: 0,
     stdout: JSON.stringify({
       data: {
-        list: [
+        "1": [
           {
-            group_infos: [
+            moql_field_list: [
               {
-                data: [
-                  {
-                    moql_field_list: [
-                      {
-                        key: "work_item_id",
-                        value_type: {
-                          bigint_value: "7128603670",
-                        },
-                      },
-                      {
-                        key: "name",
-                        value_type: {
-                          string_value: "新东方鲜生",
-                        },
-                      },
-                    ],
-                  },
-                ],
+                key: "work_item_id",
+                name: "work_item_id",
+                value: {
+                  long_value: "7128603670",
+                },
+                value_type: "long",
+              },
+              {
+                key: "name",
+                name: "店铺id 客户名称",
+                value: {
+                  string_value: "新东方鲜生",
+                },
+                value_type: "string",
               },
             ],
           },

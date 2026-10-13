@@ -4,7 +4,6 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BridgeConfig } from "./config.js";
-import { logger } from "./logger.js";
 import type {
   ContentProducerAssignment,
   CustomerCrmCandidate,
@@ -151,25 +150,6 @@ function scalarValue(value: unknown): string | undefined {
   return undefined;
 }
 
-function jsonShape(value: unknown, depth = 0): unknown {
-  if (value === null) return "null";
-  if (Array.isArray(value)) {
-    return {
-      type: "array",
-      length: value.length,
-      items: depth >= 6 ? [] : value.slice(0, 2).map((item) => jsonShape(item, depth + 1)),
-    };
-  }
-  if (typeof value !== "object") return typeof value;
-  if (depth >= 6) return { type: "object", keys: Object.keys(value) };
-  return {
-    type: "object",
-    fields: Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, jsonShape(item, depth + 1)]),
-    ),
-  };
-}
-
 function typedFieldValue(object: Record<string, unknown>): string | undefined {
   const valueKeys = [
     "field_value",
@@ -182,6 +162,8 @@ function typedFieldValue(object: Record<string, unknown>): string | undefined {
     "textValue",
     "bigint_value",
     "bigintValue",
+    "long_value",
+    "longValue",
     "int64_value",
     "int64Value",
     "integer_value",
@@ -197,6 +179,11 @@ function typedFieldValue(object: Record<string, unknown>): string | undefined {
     if (!Object.hasOwn(object, key)) continue;
     const candidate = scalarValue(object[key]);
     if (candidate) return candidate;
+    const nestedValue = object[key];
+    if (nestedValue && typeof nestedValue === "object" && !Array.isArray(nestedValue)) {
+      const nested = typedFieldValue(nestedValue as Record<string, unknown>);
+      if (nested) return nested;
+    }
   }
 
   const valueType = object.value_type ?? object.valueType;
@@ -988,9 +975,7 @@ export class MeegleIdentityManager {
         ],
         true,
       );
-      const payload = JSON.parse(result.stdout) as unknown;
-      logger.info("crm.mql_payload_shape", { shape: jsonShape(payload) });
-      return customerCrmCandidates(payload, projectKey);
+      return customerCrmCandidates(JSON.parse(result.stdout) as unknown, projectKey);
     };
 
     let candidates: CustomerCrmCandidate[] = [];
