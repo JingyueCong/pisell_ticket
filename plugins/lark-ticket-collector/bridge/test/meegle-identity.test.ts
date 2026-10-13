@@ -166,6 +166,60 @@ test("customer CRM lookup reads selected values from nested MQL fields", async (
   }
 });
 
+test("customer CRM lookup reads the CLI moql field list row shape", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const runner: ProcessRunner = async () => ({
+    exitCode: 0,
+    stdout: JSON.stringify({
+      data: {
+        list: [
+          {
+            group_infos: [
+              {
+                data: [
+                  {
+                    moql_field_list: [
+                      {
+                        key: "work_item_id",
+                        value_type: "bigint",
+                        value: "7128603670",
+                      },
+                      {
+                        key: "name",
+                        value_type: "text",
+                        value: "新东方鲜生",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    stderr: "",
+  });
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveCustomerCrm({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        merchantName: "新东方鲜生",
+        lookupHint: "7128603670",
+      });
+    assert.equal(result.status, "unique");
+    assert.equal(result.matchMethod, "work_item_id");
+    assert.deepEqual(result.candidates[0], {
+      workItemId: "7128603670",
+      name: "新东方鲜生",
+      url: "https://project.feishu.cn/v2qint/crm/detail/7128603670",
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("customer CRM lookup does not treat an unrelated nested user name as the customer", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   const runner: ProcessRunner = async () => ({

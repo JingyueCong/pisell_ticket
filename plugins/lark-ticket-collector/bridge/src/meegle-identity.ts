@@ -192,6 +192,9 @@ function customerCrmCandidates(value: unknown, projectKey: string): CustomerCrmC
   const objects: Array<Record<string, unknown>> = [];
   collectObjects(value, objects);
   const found = new Map<string, CustomerCrmCandidate>();
+  const workItemIdDescriptors = new Set(
+    ["work_item_id", "workItemId", "工作项ID", "工作项id"].map(normalized),
+  );
   const nameDescriptors = new Set(
     ["name", "title", "名称", "店铺id 客户名称"].map(normalized),
   );
@@ -199,9 +202,19 @@ function customerCrmCandidates(value: unknown, projectKey: string): CustomerCrmC
     ["work_item_status", "workItemStatus", "status", "状态"].map(normalized),
   );
   for (const object of objects) {
-    const workItemId = ["work_item_id", "workItemId", "工作项ID", "工作项id", "id"]
-      .map((key) => scalarValue(object[key]))
-      .find(Boolean);
+    const hasSelectedFields = [
+      "fields",
+      "work_item_fields",
+      "workItemFields",
+      "moql_field_list",
+    ].some((key) => Object.hasOwn(object, key));
+    const workItemId =
+      ["work_item_id", "workItemId", "工作项ID", "工作项id", "id"]
+        .map((key) => scalarValue(object[key]))
+        .find(Boolean) ??
+      (hasSelectedFields
+        ? selectedFieldValue(object, workItemIdDescriptors)
+        : undefined);
     if (!workItemId || found.has(workItemId)) continue;
     const name =
       ["name", "名称", "title"]
