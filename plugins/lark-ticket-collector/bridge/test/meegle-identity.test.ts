@@ -181,13 +181,15 @@ test("customer CRM lookup reads the CLI moql field list row shape", async () => 
                     moql_field_list: [
                       {
                         key: "work_item_id",
-                        value_type: "bigint",
-                        value: "7128603670",
+                        value_type: {
+                          bigint_value: "7128603670",
+                        },
                       },
                       {
                         key: "name",
-                        value_type: "text",
-                        value: "新东方鲜生",
+                        value_type: {
+                          string_value: "新东方鲜生",
+                        },
                       },
                     ],
                   },

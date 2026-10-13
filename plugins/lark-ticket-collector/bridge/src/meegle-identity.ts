@@ -150,6 +150,54 @@ function scalarValue(value: unknown): string | undefined {
   return undefined;
 }
 
+function typedFieldValue(object: Record<string, unknown>): string | undefined {
+  const valueKeys = [
+    "field_value",
+    "fieldValue",
+    "value",
+    "values",
+    "string_value",
+    "stringValue",
+    "text_value",
+    "textValue",
+    "bigint_value",
+    "bigintValue",
+    "int64_value",
+    "int64Value",
+    "integer_value",
+    "integerValue",
+    "number_value",
+    "numberValue",
+    "display_value",
+    "displayValue",
+    "raw_value",
+    "rawValue",
+  ];
+  for (const key of valueKeys) {
+    if (!Object.hasOwn(object, key)) continue;
+    const candidate = scalarValue(object[key]);
+    if (candidate) return candidate;
+  }
+
+  const valueType = object.value_type ?? object.valueType;
+  if (valueType && typeof valueType === "object") {
+    if (Array.isArray(valueType)) {
+      for (const item of valueType) {
+        const candidate = scalarValue(item);
+        if (candidate) return candidate;
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          const nested = typedFieldValue(item as Record<string, unknown>);
+          if (nested) return nested;
+        }
+      }
+    } else {
+      const nested = typedFieldValue(valueType as Record<string, unknown>);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
+}
+
 function selectedFieldValue(
   row: Record<string, unknown>,
   expectedDescriptors: ReadonlySet<string>,
@@ -179,11 +227,8 @@ function selectedFieldValue(
       .filter((value): value is string => Boolean(value))
       .map(normalized);
     if (!descriptors.some((descriptor) => expectedDescriptors.has(descriptor))) continue;
-    for (const key of ["field_value", "fieldValue", "value", "values"]) {
-      if (!Object.hasOwn(object, key)) continue;
-      const candidate = scalarValue(object[key]);
-      if (candidate) return candidate;
-    }
+    const candidate = typedFieldValue(object);
+    if (candidate) return candidate;
   }
   return undefined;
 }
