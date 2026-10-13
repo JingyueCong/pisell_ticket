@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BridgeConfig } from "./config.js";
+import { logger } from "./logger.js";
 import type {
   ContentProducerAssignment,
   CustomerCrmCandidate,
@@ -148,6 +149,25 @@ function scalarValue(value: unknown): string | undefined {
     if (candidate) return candidate;
   }
   return undefined;
+}
+
+function jsonShape(value: unknown, depth = 0): unknown {
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    return {
+      type: "array",
+      length: value.length,
+      items: depth >= 6 ? [] : value.slice(0, 2).map((item) => jsonShape(item, depth + 1)),
+    };
+  }
+  if (typeof value !== "object") return typeof value;
+  if (depth >= 6) return { type: "object", keys: Object.keys(value) };
+  return {
+    type: "object",
+    fields: Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, jsonShape(item, depth + 1)]),
+    ),
+  };
 }
 
 function typedFieldValue(object: Record<string, unknown>): string | undefined {
@@ -968,7 +988,9 @@ export class MeegleIdentityManager {
         ],
         true,
       );
-      return customerCrmCandidates(JSON.parse(result.stdout) as unknown, projectKey);
+      const payload = JSON.parse(result.stdout) as unknown;
+      logger.info("crm.mql_payload_shape", { shape: jsonShape(payload) });
+      return customerCrmCandidates(payload, projectKey);
     };
 
     let candidates: CustomerCrmCandidate[] = [];
