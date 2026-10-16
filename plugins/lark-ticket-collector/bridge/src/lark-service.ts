@@ -39,6 +39,7 @@ import {
 } from "./customer-candidates.js";
 import { logger } from "./logger.js";
 import { enforceDeterministicOutcome } from "./outcome-guard.js";
+import { normalizeMeegleWorkItemLinks } from "./work-item-links.js";
 import {
   isMeegleAuthorizationConfirmation,
   MeegleIdentityManager,
@@ -987,6 +988,12 @@ export class LarkTicketService {
           });
         }
       }
+      resultText = normalizeMeegleWorkItemLinks({
+        text: resultText,
+        host: this.config.meegleIdentity.host,
+        ...(envelope.routePolicy ? { routePolicy: envelope.routePolicy } : {}),
+        outcomes: result.workItemOutcomes,
+      });
       const reply = truncate(resultText, this.config.limits.maxReplyChars);
       const resultKey =
         result.draft.action === "update" || result.draft.action === "close"
