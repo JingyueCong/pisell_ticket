@@ -27,6 +27,12 @@ export interface DraftSnapshot {
   missingFields: string[];
   workItemIds: string[];
   resources: DownloadedResource[];
+  /**
+   * Whether an unthreaded message from the same participant may continue this
+   * draft. Once a real work item has been written, only an explicit reply or
+   * exact conversation reference may continue it.
+   */
+  participantFallbackEligible?: boolean;
   updatedAt: number;
   expiresAt: number;
 }

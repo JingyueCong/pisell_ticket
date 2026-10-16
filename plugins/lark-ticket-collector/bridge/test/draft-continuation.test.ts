@@ -5,7 +5,9 @@ import {
   deriveDraftRouteCorrectionPolicy,
   draftIncludesContentMaintenance,
   enforceDraftRouteContinuation,
+  isExplicitNewTicketRequest,
   isDraftRouteCorrection,
+  shouldAllowParticipantDraftFallback,
 } from "../src/draft-continuation.js";
 import type { DraftMemoryUpdate, DraftSnapshot } from "../src/types.js";
 
@@ -131,4 +133,27 @@ test("customer bundle summaries retain the T3 producer binding across follow-ups
     }),
     false,
   );
+});
+
+test("explicit new ticket requests never fall back to an unrelated participant draft", () => {
+  for (const messageText of [
+    "创建工单，内容工单关联客服工单，Charlestown店，不需要确认人",
+    "新建一张T3内容维护工单",
+    "建立客服工单并关联T2",
+  ]) {
+    assert.equal(isExplicitNewTicketRequest(messageText), true, messageText);
+    assert.equal(shouldAllowParticipantDraftFallback(messageText), false, messageText);
+  }
+});
+
+test("missing-field and correction follow-ups retain participant draft fallback", () => {
+  for (const messageText of [
+    "Charlestown店，不需要确认人",
+    "继续创建原工单",
+    "给这个工单补充附件",
+    "不用T2工单，改成T3内容维护",
+    "创建错了，是T2工单，请调整，删除内容工单",
+  ]) {
+    assert.equal(shouldAllowParticipantDraftFallback(messageText), true, messageText);
+  }
 });

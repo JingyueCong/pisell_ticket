@@ -53,6 +53,7 @@ interface DraftRow {
   missing_fields_json: string;
   work_item_ids_json: string;
   resources_json: string;
+  participant_fallback_eligible: number;
   updated_at: number;
   expires_at: number;
 }
@@ -104,6 +105,7 @@ function draftSnapshot(row: DraftRow): DraftSnapshot {
     missingFields: parseStringArray(row.missing_fields_json),
     workItemIds: parseStringArray(row.work_item_ids_json),
     resources: parseResources(row.resources_json),
+    participantFallbackEligible: row.participant_fallback_eligible !== 0,
     updatedAt: row.updated_at,
     expiresAt: row.expires_at,
   };
@@ -168,6 +170,7 @@ export class BridgeStore {
         missing_fields_json TEXT NOT NULL,
         work_item_ids_json TEXT NOT NULL,
         resources_json TEXT NOT NULL,
+        participant_fallback_eligible INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL
@@ -251,6 +254,24 @@ export class BridgeStore {
           )
       WHERE created_at = 0 OR updated_at = 0
     `);
+
+    const draftColumns = this.db
+      .prepare("PRAGMA table_info(ticket_drafts)")
+      .all() as Array<{ name: string }>;
+    const draftNames = new Set(draftColumns.map((column) => column.name));
+    if (!draftNames.has("participant_fallback_eligible")) {
+      this.db.exec(
+        "ALTER TABLE ticket_drafts ADD COLUMN participant_fallback_eligible INTEGER NOT NULL DEFAULT 1",
+      );
+      // Existing drafts that already contain work-item IDs have crossed an
+      // external-write boundary. They remain available through exact/reply
+      // references, but must never capture a later unthreaded request.
+      this.db.exec(`
+        UPDATE ticket_drafts
+        SET participant_fallback_eligible = 0
+        WHERE work_item_ids_json <> '[]'
+      `);
+    }
   }
 
   claimMessage(input: {
@@ -588,7 +609,8 @@ export class BridgeStore {
     const exact = this.db
       .prepare(`
         SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
-               missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+               missing_fields_json, work_item_ids_json, resources_json,
+               participant_fallback_eligible, updated_at, expires_at
         FROM ticket_drafts
         WHERE conversation_key = ? AND chat_id = ? AND sender_id = ? AND status = 'open'
         LIMIT 1
@@ -611,7 +633,7 @@ export class BridgeStore {
                  draft.id, draft.conversation_key, draft.chat_id, draft.sender_id,
                  draft.ticket_type, draft.summary, draft.missing_fields_json,
                  draft.work_item_ids_json, draft.resources_json, draft.updated_at,
-                 draft.expires_at
+                 draft.expires_at, draft.participant_fallback_eligible
           FROM conversation_messages AS message
           JOIN ticket_drafts AS draft
             ON draft.conversation_key = message.conversation_key
@@ -634,9 +656,11 @@ export class BridgeStore {
     const candidates = this.db
       .prepare(`
         SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
-               missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+               missing_fields_json, work_item_ids_json, resources_json,
+               participant_fallback_eligible, updated_at, expires_at
         FROM ticket_drafts
         WHERE chat_id = ? AND sender_id = ? AND status = 'open'
+          AND participant_fallback_eligible = 1
         ORDER BY updated_at DESC
         LIMIT 2
       `)
@@ -654,7 +678,8 @@ export class BridgeStore {
     const exact = this.db
       .prepare(`
         SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
-               missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+               missing_fields_json, work_item_ids_json, resources_json,
+               participant_fallback_eligible, updated_at, expires_at
         FROM ticket_drafts
         WHERE conversation_key = ? AND chat_id = ? AND sender_id = ?
           AND status IN ('open', 'closed') AND updated_at >= ?
@@ -684,7 +709,7 @@ export class BridgeStore {
                draft.id, draft.conversation_key, draft.chat_id, draft.sender_id,
                draft.ticket_type, draft.summary, draft.missing_fields_json,
                draft.work_item_ids_json, draft.resources_json, draft.updated_at,
-               draft.expires_at
+               draft.expires_at, draft.participant_fallback_eligible
         FROM conversation_messages AS message
         JOIN ticket_drafts AS draft
           ON draft.conversation_key = message.conversation_key
@@ -710,6 +735,7 @@ export class BridgeStore {
     activeDraftId?: string;
     update: DraftMemoryUpdate;
     resources?: DownloadedResource[];
+    participantFallbackEligible?: boolean;
     ttlMs: number;
     now?: number;
   }): DraftSnapshot | undefined {
@@ -726,6 +752,7 @@ export class BridgeStore {
       .filter(Boolean)
       .slice(0, 50);
     const incomingResources = input.resources ?? [];
+    const participantFallbackEligible = input.participantFallbackEligible === false ? 0 : 1;
 
     return this.db.transaction(() => {
       this.db
@@ -749,6 +776,7 @@ export class BridgeStore {
           .prepare(`
             UPDATE ticket_drafts
             SET status = 'closed',
+                participant_fallback_eligible = 0,
                 ticket_type = COALESCE(?, ticket_type),
                 summary = CASE WHEN ? = '' THEN summary ELSE ? END,
                 missing_fields_json = ?, work_item_ids_json = ?, updated_at = ?
@@ -781,6 +809,8 @@ export class BridgeStore {
             UPDATE ticket_drafts
             SET ticket_type = COALESCE(?, ticket_type), summary = ?,
                 missing_fields_json = ?, work_item_ids_json = ?, resources_json = ?,
+                participant_fallback_eligible = CASE
+                  WHEN ? = 0 THEN 0 ELSE participant_fallback_eligible END,
                 updated_at = ?, expires_at = ?
             WHERE id = ? AND chat_id = ? AND sender_id = ? AND status = 'open'
           `)
@@ -790,6 +820,7 @@ export class BridgeStore {
             JSON.stringify(missingFields),
             JSON.stringify(workItemIds),
             JSON.stringify(resources),
+            participantFallbackEligible,
             now,
             expiresAt,
             input.activeDraftId,
@@ -799,7 +830,8 @@ export class BridgeStore {
         const updated = this.db
           .prepare(`
             SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
-                   missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+                   missing_fields_json, work_item_ids_json, resources_json,
+                   participant_fallback_eligible, updated_at, expires_at
             FROM ticket_drafts WHERE id = ? AND status = 'open'
           `)
           .get(input.activeDraftId) as DraftRow | undefined;
@@ -811,8 +843,9 @@ export class BridgeStore {
         .prepare(`
           INSERT INTO ticket_drafts (
             id, conversation_key, chat_id, sender_id, status, ticket_type, summary,
-            missing_fields_json, work_item_ids_json, resources_json, created_at, updated_at, expires_at
-          ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
+            missing_fields_json, work_item_ids_json, resources_json,
+            participant_fallback_eligible, created_at, updated_at, expires_at
+          ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(conversation_key) DO UPDATE SET
             chat_id = excluded.chat_id,
             sender_id = excluded.sender_id,
@@ -822,6 +855,9 @@ export class BridgeStore {
             missing_fields_json = excluded.missing_fields_json,
             work_item_ids_json = excluded.work_item_ids_json,
             resources_json = excluded.resources_json,
+            participant_fallback_eligible = CASE
+              WHEN ticket_drafts.participant_fallback_eligible = 0 THEN 0
+              ELSE excluded.participant_fallback_eligible END,
             updated_at = excluded.updated_at,
             expires_at = excluded.expires_at
         `)
@@ -835,6 +871,7 @@ export class BridgeStore {
           JSON.stringify(missingFields),
           JSON.stringify(workItemIds),
           JSON.stringify(incomingResources.slice(-50)),
+          participantFallbackEligible,
           now,
           now,
           expiresAt,
@@ -842,7 +879,8 @@ export class BridgeStore {
       const row = this.db
         .prepare(`
           SELECT id, conversation_key, chat_id, sender_id, ticket_type, summary,
-                 missing_fields_json, work_item_ids_json, resources_json, updated_at, expires_at
+                 missing_fields_json, work_item_ids_json, resources_json,
+                 participant_fallback_eligible, updated_at, expires_at
           FROM ticket_drafts WHERE conversation_key = ? AND status = 'open'
         `)
         .get(input.conversationKey) as DraftRow;

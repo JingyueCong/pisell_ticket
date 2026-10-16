@@ -26,7 +26,10 @@ import {
   deriveDraftRouteCorrectionPolicy,
   draftIncludesContentMaintenance,
   enforceDraftRouteContinuation,
+  isExplicitNewTicketRequest,
+  shouldAllowParticipantDraftFallback,
 } from "./draft-continuation.js";
+import { resourcesForAttachmentArchive } from "./draft-resources.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import {
@@ -414,18 +417,32 @@ export class LarkTicketService {
         ...(message.threadId ? { threadId: message.threadId } : {}),
         ...(message.rootId ? { rootId: message.rootId } : {}),
       });
+      const referenceMessageIds = [
+        message.threadId,
+        message.rootId,
+        message.replyToMessageId,
+      ].filter((messageId): messageId is string => Boolean(messageId));
+      const participantFallbackAllowed =
+        referenceMessageIds.length === 0 &&
+        shouldAllowParticipantDraftFallback(message.content);
       const activeDraft = this.store.activeDraft({
         conversationKey: messageKey,
         chatId: message.chatId,
         senderId: message.senderId,
-        referenceMessageIds: [
-          message.threadId,
-          message.rootId,
-          message.replyToMessageId,
-        ].filter((messageId): messageId is string => Boolean(messageId)),
-        allowParticipantFallback: !(
-          message.threadId || message.rootId || message.replyToMessageId
-        ),
+        referenceMessageIds,
+        allowParticipantFallback: participantFallbackAllowed,
+      });
+      this.store.recordOperation({
+        messageId: message.messageId,
+        step: "draft_scope_resolved",
+        status: "info",
+        detail: {
+          explicitNewTicketRequest: isExplicitNewTicketRequest(message.content),
+          participantFallbackAllowed,
+          referenceCount: referenceMessageIds.length,
+          activeDraftResolved: Boolean(activeDraft),
+          ...(activeDraft ? { activeDraftId: activeDraft.id } : {}),
+        },
       });
       const titleUpdateIntent = isTicketTitleUpdateRequest(message.content);
       const relatedTitleDraft =
@@ -435,11 +452,7 @@ export class LarkTicketService {
               conversationKey: messageKey,
               chatId: message.chatId,
               senderId: message.senderId,
-              referenceMessageIds: [
-                message.threadId,
-                message.rootId,
-                message.replyToMessageId,
-              ].filter((messageId): messageId is string => Boolean(messageId)),
+              referenceMessageIds,
               newerThan: Date.now() - this.config.limits.maxHistoryAgeMs,
             })
           : undefined);
@@ -685,10 +698,10 @@ export class LarkTicketService {
           },
         });
       }
-      const allResources = [
-        ...(activeDraft?.resources ?? []),
-        ...envelope.resources,
-      ];
+      const allResources = resourcesForAttachmentArchive({
+        ...(activeDraft ? { activeDraft } : {}),
+        currentResources: envelope.resources,
+      });
       const hasReadableResources = allResources.some(
         (resource) => Boolean(resource.localPath) && !resource.error,
       );
@@ -977,6 +990,9 @@ export class LarkTicketService {
         ...(activeDraft ? { activeDraftId: activeDraft.id } : {}),
         update: result.draft,
         resources: envelope.resources,
+        participantFallbackEligible: !result.workItemOutcomes.some(
+          (outcome) => outcome.disposition !== "queried",
+        ),
         ttlMs: this.config.limits.draftTtlMs,
       });
       this.store.recordOperation({

@@ -16,6 +16,25 @@ const REMOVES_CONTENT_ITEM =
   /(?:删除|移除|取消|作废|关闭|撤销|不要|不用)(?:这张|这个|原来的?|误建的?)?\s*(?:t\s*3\s*)?(?:内容维护|内容工单)/iu;
 const EXPLICITLY_STARTS_ANOTHER =
   /(?:另外|另行|重新|再)(?:新建|创建|建)(?:一张|一个)?|(?:新建|创建|建)(?:另一张|另一个|新的)(?:工单|工作项)/u;
+const EXPLICIT_NEW_TICKET_REQUEST =
+  /(?:创建|新建|建立|建)(?:一张|一个|个)?[^，。；\n]{0,24}(?:工单|工作项)/u;
+const CONTINUES_EXISTING_DRAFT =
+  /(?:继续|接着|补充|追加|修改|调整|更新|更正|纠正|重命名|改标题|上一张|上一个|刚才|原来的?|这个|这张)[^，。；\n]{0,30}(?:工单|工作项|草稿|任务)?|(?:不用|不要|取消|去掉|移除)[^，。；\n]{0,24}(?:改成|改为|换成|换为|调整成|调整为)/u;
+
+export function isExplicitNewTicketRequest(messageText: string): boolean {
+  return EXPLICIT_NEW_TICKET_REQUEST.test(messageText);
+}
+
+/**
+ * Participant fallback is intentionally narrower than an explicit reply.
+ * It is convenient while an employee is filling a draft, but must not make a
+ * fresh "create ticket" request inherit the participant's only older draft.
+ */
+export function shouldAllowParticipantDraftFallback(messageText: string): boolean {
+  if (isDraftRouteCorrection(messageText)) return true;
+  if (CONTINUES_EXISTING_DRAFT.test(messageText)) return true;
+  return !isExplicitNewTicketRequest(messageText);
+}
 
 export function isDraftRouteCorrection(messageText: string): boolean {
   if (EXPLICITLY_STARTS_ANOTHER.test(messageText)) return false;

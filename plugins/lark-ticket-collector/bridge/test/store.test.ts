@@ -74,6 +74,51 @@ test("store migrates legacy resource rows and restricts database permissions", (
   }
 });
 
+test("store migration disables participant fallback for legacy post-write drafts", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const databasePath = join(directory, "bridge.sqlite");
+  const legacy = new Database(databasePath);
+  legacy.exec(`
+    CREATE TABLE ticket_drafts (
+      id TEXT PRIMARY KEY, conversation_key TEXT NOT NULL UNIQUE,
+      chat_id TEXT NOT NULL, sender_id TEXT NOT NULL, status TEXT NOT NULL,
+      ticket_type TEXT, summary TEXT NOT NULL, missing_fields_json TEXT NOT NULL,
+      work_item_ids_json TEXT NOT NULL, resources_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+    );
+    INSERT INTO ticket_drafts VALUES (
+      'draft_written', 'oc:ou:scope:old', 'oc', 'ou', 'open', '客服工单',
+      '已创建客服工单', '[]', '["7130000001"]', '[]', 1, 2, 999999
+    );
+  `);
+  legacy.close();
+
+  const store = new BridgeStore(databasePath);
+  try {
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc:ou:scope:fresh",
+        chatId: "oc",
+        senderId: "ou",
+        allowParticipantFallback: true,
+        now: 3,
+      }),
+      undefined,
+    );
+    const exact = store.activeDraft({
+      conversationKey: "oc:ou:scope:old",
+      chatId: "oc",
+      senderId: "ou",
+      now: 3,
+    });
+    assert.equal(exact?.id, "draft_written");
+    assert.equal(exact?.participantFallbackEligible, false);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("store records a per-message operation journal for safe recovery", () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
   const store = new BridgeStore(join(directory, "bridge.sqlite"));
@@ -259,6 +304,7 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
           localPath: "/tmp/resources/details.pdf",
         },
       ],
+      participantFallbackEligible: false,
       ttlMs: 100,
       now: 1_060,
     });
@@ -268,6 +314,39 @@ test("store opens, updates, closes, and expires structured ticket drafts", () =>
       "img_1",
       "file_2",
     ]);
+    assert.equal(updated?.participantFallbackEligible, false);
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_1:scope:fresh-unthreaded-request",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        allowParticipantFallback: true,
+        now: 1_065,
+      }),
+      undefined,
+      "a draft that crossed an external-write boundary must not capture a later unthreaded request",
+    );
+    assert.equal(
+      store.activeDraft({
+        conversationKey,
+        chatId: "oc_1",
+        senderId: "ou_1",
+        now: 1_065,
+      })?.id,
+      opened.id,
+      "the exact conversation must still be able to continue the draft",
+    );
+    assert.equal(
+      store.activeDraft({
+        conversationKey: "oc_1:ou_1:scope:reply-after-write",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        referenceMessageIds: ["om_followup_anchor"],
+        now: 1_065,
+      })?.id,
+      opened.id,
+      "an explicit reply reference must still continue a post-write draft",
+    );
 
     store.applyDraftUpdate({
       conversationKey,

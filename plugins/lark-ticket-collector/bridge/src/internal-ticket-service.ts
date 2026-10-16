@@ -389,6 +389,9 @@ export class InternalTicketService {
         ...(activeDraft ? { activeDraftId: activeDraft.id } : {}),
         update: result.draft,
         resources,
+        participantFallbackEligible: !result.workItemOutcomes.some(
+          (outcome) => outcome.disposition !== "queried",
+        ),
         ttlMs: this.config.limits.draftTtlMs,
       });
       this.store.completeMessage(messageId, reply);
