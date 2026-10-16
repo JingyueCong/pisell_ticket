@@ -170,6 +170,7 @@ export interface AgentRequest {
   envelope: InboundEnvelope;
   history: StoredMessage[];
   activeDraft?: DraftSnapshot;
+  visualEvidence?: VisualSemanticEvidence;
   customerCandidateContext?: {
     candidates: CustomerCrmCandidate[];
     selected?: CustomerCrmCandidate;
@@ -184,7 +185,14 @@ export interface AgentResult {
   attachmentArchive: AttachmentArchiveReport;
   contentProducerSelection?: ContentProducerSelection;
   commandEvidence?: AgentCommandEvidence[];
+  visualEvidence?: VisualSemanticEvidence;
   diagnostics: string[];
+}
+
+export interface VisualSemanticEvidence {
+  /** Verbatim business-request text extracted in an isolated vision pass. */
+  quotes: string[];
+  confidence: "high" | "medium" | "low";
 }
 
 export interface AgentCommandEvidence {
@@ -192,6 +200,7 @@ export interface AgentCommandEvidence {
   operation: string;
   exitCode: number;
   policyDenied: boolean;
+  policyReason?: "semantic_conflict" | "bridge_policy";
 }
 
 export type WorkItemOutcomeDisposition =

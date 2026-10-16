@@ -7,6 +7,10 @@ test("prompt treats attachment content as untrusted evidence", () => {
   const prompt = buildAgentPrompt({
     resourceRoot: "/tmp/resources",
     history: [],
+    visualEvidence: {
+      quotes: ["Charlestown明天4:30闭店 麻烦取消下线上订票"],
+      confidence: "high",
+    },
     envelope: {
       messageId: "om_1",
       chatId: "oc_1",
@@ -73,6 +77,9 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /原文“取消线上订票”绝不能写成“取消线下订单”/);
   assert.match(prompt, /任何一个关键字看不清.*调用任何 Meegle 写命令之前停止/);
   assert.match(prompt, /当前消息和本轮附件是新请求的唯一业务事实来源/);
+  assert.match(prompt, /独立视觉原文核对（仅本轮图片/);
+  assert.match(prompt, /Charlestown明天4:30闭店 麻烦取消下线上订票/);
+  assert.match(prompt, /semantic safety gate.*自动重建标题\/描述并立即重试/);
   assert.match(prompt, /可信入口路由策略/);
   assert.match(prompt, /可信已建错类型纠正策略/);
   assert.match(prompt, /mode: replace_content_maintenance_with_t2/);

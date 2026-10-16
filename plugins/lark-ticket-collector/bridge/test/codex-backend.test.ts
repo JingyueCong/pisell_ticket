@@ -3,11 +3,15 @@ import test from "node:test";
 
 import {
   AGENT_OUTPUT_SCHEMA,
+  VISUAL_EVIDENCE_SCHEMA,
   buildCodexRuntimeProbeArgs,
   buildCodexArgs,
+  buildVisualEvidenceArgs,
+  buildVisualEvidencePrompt,
   isCodexRuntimeCompatibilityFailure,
   parseCodexRuntimeProbeOutput,
   parseAgentOutput,
+  parseVisualEvidenceOutput,
   resolveExecutablePath,
 } from "../src/codex-backend.js";
 import type { BridgeConfig } from "../src/config.js";
@@ -112,6 +116,56 @@ test("Codex startup probe uses structured output without ticket resources", () =
     status: "READY",
   });
   assert.throws(() => parseCodexRuntimeProbeOutput('{"status":"NO"}'));
+});
+
+test("isolated visual evidence pass uses only current-message images", () => {
+  const args = buildVisualEvidenceArgs({
+    config,
+    request: {
+      ...request,
+      envelope: {
+        ...request.envelope,
+        resources: [
+          { type: "image", fileKey: "current", localPath: "/tmp/resources/current.png" },
+          { type: "file", fileKey: "pdf", localPath: "/tmp/resources/current.pdf" },
+        ],
+      },
+      activeDraft: {
+        id: "draft_old",
+        conversationKey: "old",
+        chatId: "oc_1",
+        senderId: "ou_1",
+        summary: "old",
+        missingFields: [],
+        workItemIds: [],
+        resources: [
+          { type: "image", fileKey: "old", localPath: "/tmp/resources/old.png" },
+        ],
+        updatedAt: 1,
+        expiresAt: 2,
+      },
+    },
+    outputPath: "/tmp/evidence.json",
+    schemaPath: "/tmp/evidence.schema.json",
+  });
+
+  assert.equal(VISUAL_EVIDENCE_SCHEMA.properties.quotes.maxItems, 20);
+  assert.ok(args.includes("/tmp/resources/current.png"));
+  assert.ok(!args.includes("/tmp/resources/old.png"));
+  assert.ok(!args.includes("/tmp/resources/current.pdf"));
+  assert.match(buildVisualEvidencePrompt(), /不得总结、改写、纠错或依据场景推断/);
+  assert.deepEqual(
+    parseVisualEvidenceOutput(
+      JSON.stringify({
+        quotes: [" Charlestown 明天 4:30 闭店，取消线上订票 "],
+        confidence: "high",
+      }),
+    ),
+    {
+      quotes: ["Charlestown 明天 4:30 闭店，取消线上订票"],
+      confidence: "high",
+    },
+  );
 });
 
 test("Codex configuration schema failures are classified before ticket execution", () => {

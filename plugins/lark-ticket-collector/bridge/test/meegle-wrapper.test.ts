@@ -6,10 +6,11 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { MeegleBrokerSession } from "../src/meegle-broker.js";
+import type { VisualSemanticEvidence } from "../src/types.js";
 
 const wrapper = resolve("bin/meegle");
 
-async function invoke(args: string[]) {
+async function invoke(args: string[], visualEvidence?: VisualSemanticEvidence) {
   const directory = mkdtempSync(join(tmpdir(), "meegle-wrapper-"));
   const real = join(directory, "meegle-real");
   const brokerDirectory = join(directory, "broker");
@@ -20,6 +21,7 @@ async function invoke(args: string[]) {
     binary: real,
     profile: "lark-alice",
     commandTimeoutMs: 5_000,
+    ...(visualEvidence ? { visualEvidence } : {}),
   });
   await broker.prepare();
   const brokerLoop = broker.run();
@@ -117,4 +119,25 @@ test("wrapper cannot change profile, authentication, or CLI configuration", asyn
     assert.equal(result.status, 64);
     assert.equal(result.audit[0]?.policyDenied, true);
   }
+});
+
+test("wrapper blocks semantic inversion and permits the automatic corrected retry", async () => {
+  const evidence: VisualSemanticEvidence = {
+    quotes: ["Charlestown明天4:30闭店 麻烦取消下线上订票"],
+    confidence: "high",
+  };
+  const denied = await invoke(
+    ["workitem", "create", "--name", "Charlestown 取消线下订单"],
+    evidence,
+  );
+  assert.equal(denied.status, 64);
+  assert.match(denied.stderr, /Semantic safety gate rejected/);
+  assert.equal(denied.audit[0]?.policyReason, "semantic_conflict");
+
+  const corrected = await invoke(
+    ["workitem", "create", "--name", "Charlestown 取消线上订票"],
+    evidence,
+  );
+  assert.equal(corrected.status, 0);
+  assert.equal(corrected.audit[0]?.policyDenied, false);
 });

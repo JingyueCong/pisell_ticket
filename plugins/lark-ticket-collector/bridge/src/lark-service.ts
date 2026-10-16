@@ -640,6 +640,28 @@ export class LarkTicketService {
           : {}),
         resourceRoot: this.config.storage.resourceDir,
       });
+      if (rawResult.visualEvidence) {
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "visual_evidence_extracted",
+          status: "succeeded",
+          detail: {
+            confidence: rawResult.visualEvidence.confidence,
+            quotes: rawResult.visualEvidence.quotes,
+          },
+        });
+      }
+      const semanticGateDenials = (rawResult.commandEvidence ?? []).filter(
+        (entry) => entry.policyReason === "semantic_conflict",
+      ).length;
+      if (semanticGateDenials > 0) {
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "semantic_gate_auto_retry",
+          status: "info",
+          detail: { deniedWriteCount: semanticGateDenials },
+        });
+      }
       let producerSelectionError =
         envelope.contentMaintenanceProducerSource?.error;
       const trustedProducerSelection = resolveTrustedProducerSelection({

@@ -11,7 +11,12 @@ import { ConcurrencyLimiter } from "./concurrency-limiter.js";
 import type { BridgeConfig } from "./config.js";
 import { MeegleBrokerSession } from "./meegle-broker.js";
 import { buildAgentPrompt } from "./prompt.js";
-import type { AgentBackend, AgentRequest, AgentResult } from "./types.js";
+import type {
+  AgentBackend,
+  AgentRequest,
+  AgentResult,
+  VisualSemanticEvidence,
+} from "./types.js";
 
 interface ProcessResult {
   exitCode: number | null;
@@ -40,10 +45,79 @@ export const CODEX_RUNTIME_PROBE_SCHEMA = {
   },
 } as const;
 
+export const VISUAL_EVIDENCE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["quotes", "confidence"],
+  properties: {
+    quotes: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      maxItems: 20,
+    },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+  },
+} as const;
+
 const runtimeProbeOutput = z.object({ status: z.literal("READY") });
+const visualEvidenceOutput = z.object({
+  quotes: z.array(z.string().min(1)).max(20),
+  confidence: z.enum(["high", "medium", "low"]),
+});
 
 export function parseCodexRuntimeProbeOutput(rawOutput: string): { status: "READY" } {
   return runtimeProbeOutput.parse(JSON.parse(rawOutput));
+}
+
+export function parseVisualEvidenceOutput(rawOutput: string): VisualSemanticEvidence {
+  const parsed = visualEvidenceOutput.parse(JSON.parse(rawOutput));
+  return {
+    quotes: parsed.quotes.map((quote) => quote.trim()).filter(Boolean),
+    confidence: parsed.confidence,
+  };
+}
+
+export function buildVisualEvidenceArgs(input: {
+  config: BridgeConfig;
+  request: AgentRequest;
+  outputPath: string;
+  schemaPath: string;
+}): string[] {
+  const args = [
+    "exec",
+    "--ephemeral",
+    "--json",
+    "--skip-git-repo-check",
+    "--approve-for-me",
+    "-C",
+    input.config.codex.workspace,
+    "--add-dir",
+    input.request.resourceRoot,
+    "-o",
+    input.outputPath,
+    "--output-schema",
+    input.schemaPath,
+  ];
+  if (input.config.codex.model) args.push("--model", input.config.codex.model);
+  if (input.config.codex.profile) args.push("--profile", input.config.codex.profile);
+  for (const resource of input.request.envelope.resources) {
+    if (resource.type === "image" && resource.localPath && !resource.error) {
+      args.push("--image", resource.localPath);
+    }
+  }
+  args.push("-");
+  return args;
+}
+
+export function buildVisualEvidencePrompt(): string {
+  return [
+    "你是独立的图片原文核对器，只处理随本次请求附加的图片。",
+    "不要调用任何工具，不要读取其他文件，不要创建、查询或修改工单。",
+    "逐字抄录图片中会影响工单标题、问题描述或任务描述的客户/商家原始诉求。",
+    "不得总结、改写、纠错或依据场景推断；线上/线下、开启/关闭、上架/下架、增加/删除、启用/停用、可以/不可以、成功/失败、已/未以及业务对象必须逐字保留。",
+    "忽略头像、群名、时间、机器人回复和界面控件；没有业务诉求时 quotes 返回空数组。",
+    "confidence 仅表示图片中文字是否清晰可辨。",
+  ].join("\n");
 }
 
 export function isCodexRuntimeCompatibilityFailure(stderr: string): boolean {
@@ -522,11 +596,62 @@ export class CodexCliBackend implements AgentBackend {
     return this.limiter.run(() => this.executeRun(request));
   }
 
+  private async extractVisualEvidence(
+    request: AgentRequest,
+    tempDirectory: string,
+  ): Promise<{ evidence?: VisualSemanticEvidence; diagnostic?: string }> {
+    const hasCurrentImages = request.envelope.resources.some(
+      (resource) => resource.type === "image" && Boolean(resource.localPath) && !resource.error,
+    );
+    if (!hasCurrentImages) return {};
+
+    const outputPath = join(tempDirectory, "visual-evidence.json");
+    const schemaPath = join(tempDirectory, "visual-evidence.schema.json");
+    await writeFile(schemaPath, JSON.stringify(VISUAL_EVIDENCE_SCHEMA), { encoding: "utf8" });
+    try {
+      const result = await runProcess({
+        executable: this.config.codex.bin,
+        args: buildVisualEvidenceArgs({
+          config: this.config,
+          request,
+          outputPath,
+          schemaPath,
+        }),
+        cwd: this.config.codex.workspace,
+        stdin: buildVisualEvidencePrompt(),
+        timeoutMs: Math.min(this.config.codex.timeoutMs, 120_000),
+      });
+      if (result.timedOut || result.exitCode !== 0) {
+        return {
+          diagnostic: `独立图片原文核对未完成（exit=${result.exitCode ?? "unknown"}）。`,
+        };
+      }
+      let rawOutput = "";
+      try {
+        rawOutput = (await readFile(outputPath, "utf8")).trim();
+      } catch {
+        rawOutput = extractFallbackText(result.stdout) ?? "";
+      }
+      const evidence = parseVisualEvidenceOutput(rawOutput);
+      return evidence.quotes.length ? { evidence } : {};
+    } catch (error) {
+      return {
+        diagnostic: `独立图片原文核对不可用：${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  }
+
   private async executeRun(request: AgentRequest): Promise<AgentResult> {
     const tempDirectory = await mkdtemp(join(tmpdir(), "ticket-collector-codex-"));
     const outputPath = join(tempDirectory, "last-message.md");
     const schemaPath = join(tempDirectory, "agent-output.schema.json");
     await writeFile(schemaPath, JSON.stringify(AGENT_OUTPUT_SCHEMA), { encoding: "utf8" });
+    const visualEvidenceResult = await this.extractVisualEvidence(request, tempDirectory);
+    const requestWithEvidence: AgentRequest = visualEvidenceResult.evidence
+      ? { ...request, visualEvidence: visualEvidenceResult.evidence }
+      : request;
     const meegleWrapperDirectory = join(process.cwd(), "bin");
     const meegleWrapperPath = join(meegleWrapperDirectory, "meegle");
     const meegleRealBin = request.envelope.meegleIdentity
@@ -539,6 +664,9 @@ export class CodexCliBackend implements AgentBackend {
           binary: meegleRealBin,
           profile: request.envelope.meegleIdentity.profile,
           commandTimeoutMs: this.config.codex.timeoutMs,
+          ...(visualEvidenceResult.evidence
+            ? { visualEvidence: visualEvidenceResult.evidence }
+            : {}),
         })
       : undefined;
     if (meegleBroker) await meegleBroker.prepare();
@@ -547,7 +675,7 @@ export class CodexCliBackend implements AgentBackend {
     try {
       const args = buildCodexArgs({
         config: this.config,
-        request,
+        request: requestWithEvidence,
         outputPath,
         schemaPath,
         meegleWrapperDirectory,
@@ -564,7 +692,7 @@ export class CodexCliBackend implements AgentBackend {
           executable: this.config.codex.bin,
           args,
           cwd: this.config.codex.workspace,
-          stdin: buildAgentPrompt(request, { meegleCommand: meegleWrapperPath }),
+          stdin: buildAgentPrompt(requestWithEvidence, { meegleCommand: meegleWrapperPath }),
           timeoutMs: this.config.codex.timeoutMs,
           env: request.envelope.meegleIdentity
             ? {
@@ -625,10 +753,16 @@ export class CodexCliBackend implements AgentBackend {
         );
       }
 
-      const diagnostics = result.stderr.trim() ? [tail(result.stderr)] : [];
+      const diagnostics = [
+        ...(visualEvidenceResult.diagnostic ? [visualEvidenceResult.diagnostic] : []),
+        ...(result.stderr.trim() ? [tail(result.stderr)] : []),
+      ];
       return {
         ...parsed,
         commandEvidence: meegleBroker?.audit.map((entry) => ({ ...entry })) ?? [],
+        ...(visualEvidenceResult.evidence
+          ? { visualEvidence: visualEvidenceResult.evidence }
+          : {}),
         diagnostics,
       };
     } finally {

@@ -3,6 +3,9 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { semanticWritePolicyError } from "./semantic-gate.js";
+import type { VisualSemanticEvidence } from "./types.js";
+
 interface BrokerRequest {
   token: string;
   args: string[];
@@ -24,6 +27,7 @@ export interface MeegleBrokerAuditEntry {
   operation: string;
   exitCode: number;
   policyDenied: boolean;
+  policyReason?: "semantic_conflict" | "bridge_policy";
 }
 
 const MAX_ARGUMENTS = 200;
@@ -125,6 +129,7 @@ export class MeegleBrokerSession {
       binary: string;
       profile: string;
       commandTimeoutMs: number;
+      visualEvidence?: VisualSemanticEvidence;
     },
   ) {
     this.capability = {
@@ -168,6 +173,7 @@ export class MeegleBrokerSession {
     let response: BrokerResponse;
     let operation = "unknown";
     let policyDenied = false;
+    let policyReason: MeegleBrokerAuditEntry["policyReason"];
     try {
       const request = JSON.parse(await readFile(processingPath, "utf8")) as BrokerRequest;
       if (Array.isArray(request.args)) {
@@ -184,8 +190,16 @@ export class MeegleBrokerSession {
         response = { exitCode: 64, stdout: "", stderr: "Invalid Meegle broker request" };
         policyDenied = true;
       } else {
-        const policyError = meegleBrokerPolicyError(request.args);
+        const bridgePolicyError = meegleBrokerPolicyError(request.args);
+        const semanticPolicyError = semanticWritePolicyError(
+          request.args,
+          this.input.visualEvidence,
+        );
+        const policyError = bridgePolicyError ?? semanticPolicyError;
         policyDenied = Boolean(policyError);
+        if (policyError) {
+          policyReason = semanticPolicyError ? "semantic_conflict" : "bridge_policy";
+        }
         response = policyError
           ? { exitCode: 64, stdout: "", stderr: policyError }
           : await runMeegle({
@@ -207,6 +221,7 @@ export class MeegleBrokerSession {
       operation,
       exitCode: response.exitCode,
       policyDenied,
+      ...(policyReason ? { policyReason } : {}),
     });
     await writeFile(responseTempPath, JSON.stringify(response), { mode: 0o600 });
     await rename(responseTempPath, responsePath);
