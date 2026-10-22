@@ -44,5 +44,9 @@ export function applyCreateNewDuplicateSelection(
     missingFields: draft.missingFields.filter(
       (field) => !isDuplicateSelectionField(field),
     ),
+    // While this field is missing, workItemIds are the read-only duplicate
+    // candidates returned by the lookup. “Create new” must not carry those IDs
+    // forward as if they were part of the new ticket bundle.
+    workItemIds: [],
   };
 }

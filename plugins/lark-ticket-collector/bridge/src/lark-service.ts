@@ -608,7 +608,7 @@ export class LarkTicketService {
           detail: {
             action: "create_new",
             draftId: activeDraft.id,
-            preservedWorkItemIds: activeDraft.workItemIds,
+            discardedDuplicateCandidateIds: activeDraft.workItemIds,
           },
         });
       }

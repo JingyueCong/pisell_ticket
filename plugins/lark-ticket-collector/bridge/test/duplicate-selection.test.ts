@@ -54,14 +54,14 @@ test("create-new wording does not affect drafts that are not awaiting duplicate 
   );
 });
 
-test("resolved choice keeps the current draft and removes only the duplicate question", () => {
+test("resolved choice keeps the current draft and drops queried duplicate IDs", () => {
   const resolved = applyCreateNewDuplicateSelection({
     ...draft,
     missingFields: ["问题来源", "相似工单处理选择"],
   });
 
   assert.equal(resolved.id, draft.id);
-  assert.deepEqual(resolved.workItemIds, draft.workItemIds);
+  assert.deepEqual(resolved.workItemIds, []);
   assert.deepEqual(resolved.missingFields, ["问题来源"]);
   assert.match(resolved.summary, /仍创建独立工单，不复用历史候选/u);
 });
