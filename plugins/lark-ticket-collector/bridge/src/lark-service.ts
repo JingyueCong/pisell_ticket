@@ -30,6 +30,10 @@ import {
   shouldAllowParticipantDraftFallback,
 } from "./draft-continuation.js";
 import { resourcesForAttachmentArchive } from "./draft-resources.js";
+import {
+  applyCreateNewDuplicateSelection,
+  employeeSelectedCreateNew,
+} from "./duplicate-selection.js";
 import { KeyedQueue } from "./keyed-queue.js";
 import { deriveIntakeRoutePolicy } from "./intake-route.js";
 import {
@@ -591,16 +595,33 @@ export class LarkTicketService {
       let customerCandidates: CustomerCrmCandidate[] = [];
       let selectedCustomerCandidate: CustomerCrmCandidate | undefined;
       let agentActiveDraft = activeDraft;
+      const createNewDuplicateSelection = employeeSelectedCreateNew({
+        messageText: message.content,
+        ...(activeDraft ? { activeDraft } : {}),
+      });
+      if (activeDraft && createNewDuplicateSelection) {
+        agentActiveDraft = applyCreateNewDuplicateSelection(activeDraft);
+        this.store.recordOperation({
+          messageId: message.messageId,
+          step: "duplicate_selection_resolved",
+          status: "succeeded",
+          detail: {
+            action: "create_new",
+            draftId: activeDraft.id,
+            preservedWorkItemIds: activeDraft.workItemIds,
+          },
+        });
+      }
       if (
-        activeDraft &&
-        draftNeedsCustomerResolution(activeDraft) &&
+        agentActiveDraft &&
+        draftNeedsCustomerResolution(agentActiveDraft) &&
         meegleIdentity &&
         this.identityManager
       ) {
         try {
           customerCandidates = await this.identityManager.resolveCustomerCrmCandidatesByIds({
             identity: meegleIdentity,
-            workItemIds: activeDraft.workItemIds,
+            workItemIds: agentActiveDraft.workItemIds,
           });
           selectedCustomerCandidate = selectCustomerCandidate(
             message.content,
@@ -608,7 +629,7 @@ export class LarkTicketService {
           );
           if (selectedCustomerCandidate) {
             agentActiveDraft = applyCustomerCandidateSelection(
-              activeDraft,
+              agentActiveDraft,
               customerCandidates,
               selectedCustomerCandidate,
             );

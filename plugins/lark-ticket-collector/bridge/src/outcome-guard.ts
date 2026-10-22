@@ -5,6 +5,10 @@ import type {
   InboundEnvelope,
   StoredMessage,
 } from "./types.js";
+import {
+  employeeSelectedCreateNew,
+  isDuplicateSelectionField,
+} from "./duplicate-selection.js";
 
 const API_FAILURE_CLAIM =
   /(?:接口|API|元数据|配置)(?:[^。；\n]{0,30})(?:拒绝|报错|失败|异常|不可用|恢复)|等待接口|接口配置恢复/iu;
@@ -17,7 +21,6 @@ const CUSTOMER = /客户管理|客户\/店铺|客户或店铺|CRM/iu;
 const NAME = /(?:^|[：:\s])名称(?:$|[：:\s])|工单名称/iu;
 const DESCRIPTION = /问题描述|任务描述|(?:^|[：:\s])描述(?:$|[：:\s])/iu;
 const BLOCKING_FEEDBACK_TYPE = /反馈类型|field_10c5ea/iu;
-const DUPLICATE_SELECTION = /重复(?:工单)?候选.*(?:处理)?选择|仍创建或复用|复用或仍创建/iu;
 const KNOWN_PROBLEM_SOURCE =
   /企业微信|企微|WhatsApp|客服(?:专用)?邮箱|飞书商家群|Zendesk|线下销售\s*[/／]\s*运营转述|线下销售|运营转述/iu;
 const KNOWN_ISSUE_TYPE =
@@ -62,7 +65,7 @@ function canonicalMissingFields(values: string[]): string[] {
       add("问题描述");
       recognized = true;
     }
-    if (DUPLICATE_SELECTION.test(value)) {
+    if (isDuplicateSelectionField(value)) {
       add("重复候选处理选择");
       recognized = true;
     }
@@ -242,6 +245,16 @@ export function enforceDeterministicOutcome(input: {
   }
   if (input.selectedCustomerCandidate) {
     missingFields = missingFields.filter((field) => field !== "客户/店铺");
+  }
+  if (
+    employeeSelectedCreateNew({
+      messageText: input.envelope.content,
+      ...(input.activeDraft ? { activeDraft: input.activeDraft } : {}),
+    })
+  ) {
+    missingFields = missingFields.filter(
+      (field) => field !== "重复候选处理选择",
+    );
   }
   const customerDraft = isCustomerDraft(input);
   const evidence = userEvidence(input);

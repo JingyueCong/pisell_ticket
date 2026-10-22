@@ -308,6 +308,60 @@ test("missing duplicate details ask for a retry instead of leaking an internal f
   assert.doesNotMatch(guarded.result.text, /请补充该信息/u);
 });
 
+test("similar-ticket selection alias receives the deterministic candidate list", () => {
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "企业微信，继续" },
+    history: [],
+    activeDraft,
+    result: result({
+      text: "请补充相似工单处理选择。",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + T2 阻断性问题",
+        summary: "等待相似工单处理选择",
+        missingFields: ["相似工单处理选择"],
+        workItemIds: ["6018603489", "7070121271"],
+      },
+      workItemOutcomes: [
+        { workItemId: "6018603489", role: "customer", disposition: "queried" },
+        { workItemId: "7070121271", role: "paired", disposition: "queried" },
+      ],
+    }),
+  });
+
+  assert.deepEqual(guarded.result.draft.missingFields, ["重复候选处理选择"]);
+  assert.match(guarded.result.text, /工单 #6018603489/u);
+  assert.match(guarded.result.text, /工单 #7070121271/u);
+  assert.match(guarded.result.text, /回复“仍创建”/u);
+  assert.doesNotMatch(guarded.result.text, /请补充该信息/u);
+});
+
+test("an explicit create-new reply clears a repeated duplicate question", () => {
+  const duplicateDraft = {
+    ...activeDraft,
+    missingFields: ["相似工单处理选择"],
+    workItemIds: ["6018603489", "7070121271"],
+  };
+  const guarded = enforceDeterministicOutcome({
+    envelope: { ...envelope, content: "重新创建" },
+    history: [],
+    activeDraft: duplicateDraft,
+    result: result({
+      text: "请补充相似工单处理选择。",
+      draft: {
+        action: "update",
+        ticketType: "客服工单 + 内容维护",
+        summary: duplicateDraft.summary,
+        missingFields: ["相似工单处理选择"],
+        workItemIds: duplicateDraft.workItemIds,
+      },
+    }),
+  });
+
+  assert.doesNotMatch(guarded.result.text, /相似工单处理选择/u);
+  assert.deepEqual(guarded.result.draft.missingFields, ["问题来源"]);
+});
+
 test("a claimed interface failure without broker evidence is not presented as fact", () => {
   const guarded = enforceDeterministicOutcome({
     envelope: { ...envelope, content: "继续提交" },
