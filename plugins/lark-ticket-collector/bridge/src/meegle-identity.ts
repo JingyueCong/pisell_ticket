@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BridgeConfig } from "./config.js";
+import { logger } from "./logger.js";
 import type {
   ContentProducerAssignment,
   CustomerCrmCandidate,
@@ -33,6 +34,11 @@ interface StoredBinding extends MeegleRequestIdentity {
   verifiedAt: number;
 }
 
+type AuthenticationStatus =
+  | { kind: "authenticated" }
+  | { kind: "unauthenticated"; reason?: string }
+  | { kind: "unavailable"; reason?: string };
+
 export type IdentityGateResult =
   | { kind: "authorized"; identity: MeegleRequestIdentity }
   | { kind: "blocked"; reply: string };
@@ -58,6 +64,7 @@ const CUSTOMER_SERVICE_WORK_ITEM_TYPE = "6886d47112cff2ae4ae279e3";
 const CONTENT_MAINTENANCE_WORK_ITEM_TYPE = "67df87a8baf45c9c247ba778";
 const BLOCKING_ISSUE_WORK_ITEM_TYPE = "67df88cf656f61b9b41455d3";
 const OWNER_READBACK_DELAYS_MS = [0, 1_000, 2_000, 4_000, 8_000] as const;
+const AUTH_STATUS_RETRY_DELAYS_MS = [0, 500, 1_000, 2_000] as const;
 
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
@@ -105,6 +112,40 @@ function parseJson(text: string): Record<string, unknown> {
     throw new Error("CLI returned a non-object JSON response");
   }
   return parsed as Record<string, unknown>;
+}
+
+function tryParseJson(text: string): Record<string, unknown> {
+  try {
+    return parseJson(text);
+  } catch {
+    return {};
+  }
+}
+
+function safeAuthReason(payload: Record<string, unknown>, result: ProcessResult): string | undefined {
+  const payloadReason = stringValue(payload.reason);
+  const error = payload.error;
+  const errorMessage =
+    error && typeof error === "object" && !Array.isArray(error)
+      ? stringValue((error as Record<string, unknown>).message)
+      : undefined;
+  const raw = payloadReason ?? errorMessage ?? stringValue(result.stderr);
+  if (!raw) return undefined;
+  return raw
+    .replace(/https?:\/\/\S+/giu, "[url]")
+    .replace(/[A-Z0-9]{5}-[A-Z0-9]{5}/gu, "[code]")
+    .slice(0, 240);
+}
+
+function isTemporaryAuthFailure(result: ProcessResult, reason?: string): boolean {
+  if (result.exitCode === null || result.exitCode === 2) return true;
+  return /server unreachable|temporar|timeout|timed out|network|connection|\b5\d\d\b/iu.test(
+    reason ?? "",
+  );
+}
+
+function isRejectedToken(reason?: string): boolean {
+  return /token rejected|invalid token|expired token/iu.test(reason ?? "");
 }
 
 function responseError(result: ProcessResult): string | undefined {
@@ -663,6 +704,7 @@ function identitiesMatch(input: {
 
 export class MeegleIdentityManager {
   private readonly directory: string;
+  private readonly profileLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly config: BridgeConfig,
@@ -680,9 +722,16 @@ export class MeegleIdentityManager {
   }): Promise<IdentityGateResult> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const profile = this.profileFor(input.senderId);
-    const status = await this.meegle(profile, ["auth", "status", "--format", "json"]);
-    const statusJson = status.exitCode === 0 ? parseJson(status.stdout) : {};
-    if (statusJson.authenticated === true) {
+    return this.withProfileLock(profile, () => this.authorizeLocked(profile, input));
+  }
+
+  private async authorizeLocked(
+    profile: string,
+    input: { senderId: string; senderName?: string; messageText: string },
+  ): Promise<IdentityGateResult> {
+    const status = await this.authenticationStatus(profile);
+    if (status.kind === "authenticated") {
+      await this.archivePending(profile);
       const binding = await this.readBinding(profile);
       if (binding?.senderId === input.senderId) {
         const current = await this.meegle(profile, ["user", "me", "--format", "json"], true);
@@ -700,6 +749,14 @@ export class MeegleIdentityManager {
         };
       }
       return this.verifyAndBind(profile, input.senderId, input.senderName);
+    }
+
+    if (status.kind === "unavailable") {
+      return {
+        kind: "blocked",
+        reply:
+          "飞书项目认证服务暂时不可用，系统已保留当前内容并完成自动重试。无需重新授权，请稍后重新发送本条消息。",
+      };
     }
 
     const pending = await this.readPending(profile);
@@ -727,10 +784,15 @@ export class MeegleIdentityManager {
           reply: "尚未检测到飞书项目授权。请先打开之前的个人授权链接完成登录，然后再次回复“已授权”。",
         };
       }
-      const refreshedStatus = await this.meegle(profile, ["auth", "status", "--format", "json"]);
-      const refreshedJson =
-        refreshedStatus.exitCode === 0 ? parseJson(refreshedStatus.stdout) : {};
-      if (refreshedJson.authenticated !== true) {
+      const refreshedStatus = await this.authenticationStatus(profile);
+      if (refreshedStatus.kind === "unavailable") {
+        return {
+          kind: "blocked",
+          reply:
+            "飞书项目暂时无法确认授权状态，系统已保留当前内容并完成自动重试。无需重新授权，请稍后再次回复“已授权”。",
+        };
+      }
+      if (refreshedStatus.kind !== "authenticated") {
         return {
           kind: "blocked",
           reply: "授权仍在等待完成。请完成个人授权后再次回复“已授权”。",
@@ -738,6 +800,11 @@ export class MeegleIdentityManager {
       }
       return this.verifyAndBind(profile, input.senderId, input.senderName);
     }
+
+    if (pending && pending.expiresAt > Date.now()) {
+      return this.pendingAuthorizationReply(pending, true);
+    }
+    if (pending) await this.archivePending(profile);
 
     await this.meegle(profile, [
       "config",
@@ -774,17 +841,7 @@ export class MeegleIdentityManager {
       throw new Error("Meegle device authorization response is incomplete");
     }
     await this.writePrivate(this.pendingPath(profile), next);
-    return {
-      kind: "blocked",
-      reply: [
-        "首次使用需要绑定你本人的飞书项目身份，授权完成后系统“创建人”才会显示为你。",
-        "",
-        `[点击完成个人授权](${next.verification_uri_complete})`,
-        `用户代码：${next.user_code}`,
-        "",
-        "完成后请在本消息下回复“已授权”，验证通过后再重新发送原始工单和附件。系统不会回退使用 Echo 身份。",
-      ].join("\n"),
-    };
+    return this.pendingAuthorizationReply(next, false);
   }
 
   async ensureCustomerIntakeNodeOwner(input: {
@@ -1224,6 +1281,102 @@ export class MeegleIdentityManager {
       true,
     );
     return workItemTitleSummary(JSON.parse(result.stdout) as unknown, workItemId);
+  }
+
+  private async authenticationStatus(profile: string): Promise<AuthenticationStatus> {
+    let lastReason: string | undefined;
+    for (let attempt = 0; attempt < AUTH_STATUS_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delayMs = AUTH_STATUS_RETRY_DELAYS_MS[attempt]!;
+      if (delayMs > 0) await this.pause(delayMs);
+
+      const result = await this.meegle(profile, ["auth", "status", "--format", "json"]);
+      const payload = tryParseJson(result.stdout);
+      const reason = safeAuthReason(payload, result);
+      lastReason = reason;
+      if (payload.authenticated === true) {
+        if (attempt > 0) {
+          logger.info("meegle.auth_status_recovered", {
+            profile,
+            attempts: attempt + 1,
+          });
+        }
+        return { kind: "authenticated" };
+      }
+
+      const temporary = isTemporaryAuthFailure(result, reason);
+      const rejected = isRejectedToken(reason);
+      const finalAttempt = attempt === AUTH_STATUS_RETRY_DELAYS_MS.length - 1;
+      if (!temporary && !rejected) {
+        return {
+          kind: "unauthenticated",
+          ...(reason ? { reason } : {}),
+        };
+      }
+      if (finalAttempt) {
+        if (rejected) {
+          return {
+            kind: "unauthenticated",
+            ...(reason ? { reason } : {}),
+          };
+        }
+        logger.warn("meegle.auth_status_unavailable", {
+          profile,
+          attempts: attempt + 1,
+          exitCode: result.exitCode,
+          ...(reason ? { reason } : {}),
+        });
+        return {
+          kind: "unavailable",
+          ...(reason ? { reason } : {}),
+        };
+      }
+      logger.warn("meegle.auth_status_retry", {
+        profile,
+        attempt: attempt + 1,
+        exitCode: result.exitCode,
+        ...(reason ? { reason } : {}),
+      });
+    }
+    return {
+      kind: "unavailable",
+      ...(lastReason ? { reason: lastReason } : {}),
+    };
+  }
+
+  private pendingAuthorizationReply(
+    pending: PendingAuthorization,
+    existing: boolean,
+  ): IdentityGateResult {
+    return {
+      kind: "blocked",
+      reply: [
+        existing
+          ? "已有一项待完成的飞书项目个人授权，请继续使用同一个授权链接；系统不会重复生成授权请求。"
+          : "首次使用需要绑定你本人的飞书项目身份，授权完成后系统“创建人”才会显示为你。",
+        "",
+        `[点击完成个人授权](${pending.verification_uri_complete})`,
+        `用户代码：${pending.user_code}`,
+        "",
+        "完成后请在本消息下回复“已授权”，验证通过后再重新发送原始工单和附件。系统不会回退使用 Echo 身份。",
+      ].join("\n"),
+    };
+  }
+
+  private async withProfileLock<T>(profile: string, action: () => Promise<T>): Promise<T> {
+    const previous = this.profileLocks.get(profile) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => current);
+    this.profileLocks.set(profile, tail);
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.profileLocks.get(profile) === tail) this.profileLocks.delete(profile);
+    }
   }
 
   private profileFor(senderId: string): string {

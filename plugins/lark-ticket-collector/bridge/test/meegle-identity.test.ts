@@ -1055,6 +1055,161 @@ test("per-user authorization binds a verified sender and reuses only that profil
   }
 });
 
+test("temporary auth status failures recover without starting a new authorization", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let statusCalls = 0;
+  let initCalls = 0;
+  const pauses: number[] = [];
+  const runner: ProcessRunner = async (executable, args) => {
+    if (executable === "lark-cli") {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { users: [{ open_id: "ou_alice", localized_name: "Alice" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("status")) {
+      statusCalls += 1;
+      if (statusCalls === 1) {
+        return {
+          exitCode: 2,
+          stdout: JSON.stringify({
+            authenticated: false,
+            reason: "server unreachable: request timeout",
+          }),
+          stderr: "",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ authenticated: true }),
+        stderr: "",
+      };
+    }
+    if (args.includes("init")) initCalls += 1;
+    if (args.includes("user") && args.includes("me")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          user_key: "meegle_alice",
+          name_en: "Alice",
+        }),
+        stderr: "",
+      };
+    }
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(
+      config(directory),
+      runner,
+      async (durationMs) => {
+        pauses.push(durationMs);
+      },
+    ).authorize({
+      senderId: "ou_alice",
+      senderName: "Alice",
+      messageText: "创建客服工单",
+    });
+    assert.equal(statusCalls, 2);
+    assert.equal(initCalls, 0);
+    assert.deepEqual(pauses, [500]);
+    assert.doesNotMatch(result.kind === "blocked" ? result.reply : "", /完成个人授权/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("unreachable auth service is not misreported as a missing login", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let statusCalls = 0;
+  let initCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("status")) {
+      statusCalls += 1;
+      return {
+        exitCode: 2,
+        stdout: JSON.stringify({
+          authenticated: false,
+          reason: "server unreachable: upstream returned 503",
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("init")) initCalls += 1;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(
+      config(directory),
+      runner,
+      async () => {},
+    ).authorize({
+      senderId: "ou_alice",
+      senderName: "Alice",
+      messageText: "创建客服工单",
+    });
+    assert.equal(statusCalls, 4);
+    assert.equal(initCalls, 0);
+    assert.equal(result.kind, "blocked");
+    assert.match(result.kind === "blocked" ? result.reply : "", /无需重新授权/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("concurrent requests reuse one pending authorization", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let initCalls = 0;
+  const runner: ProcessRunner = async (_executable, args) => {
+    if (args.includes("status")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ authenticated: false, reason: "no local token" }),
+        stderr: "",
+      };
+    }
+    if (args.includes("init")) {
+      initCalls += 1;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          client_id: "client",
+          device_code: "secret-device-code",
+          user_code: "ABCD-EFGH",
+          verification_uri_complete: "https://project.feishu.cn/auth/device?code=ABCD-EFGH",
+          expires_in: 1800,
+        }),
+        stderr: "",
+      };
+    }
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const manager = new MeegleIdentityManager(config(directory), runner);
+    const input = {
+      senderId: "ou_alice",
+      senderName: "Alice",
+      messageText: "创建客服工单",
+    };
+    const [first, second] = await Promise.all([
+      manager.authorize(input),
+      manager.authorize(input),
+    ]);
+    assert.equal(initCalls, 1);
+    assert.match(first.kind === "blocked" ? first.reply : "", /ABCD-EFGH/u);
+    assert.match(second.kind === "blocked" ? second.reply : "", /ABCD-EFGH/u);
+    assert.match(second.kind === "blocked" ? second.reply : "", /不会重复生成授权请求/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("authorization is revoked when the Meegle account belongs to another sender", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   let logoutCalled = false;
