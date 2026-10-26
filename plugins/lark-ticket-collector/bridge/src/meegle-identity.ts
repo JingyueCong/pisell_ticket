@@ -64,7 +64,8 @@ const CUSTOMER_SERVICE_WORK_ITEM_TYPE = "6886d47112cff2ae4ae279e3";
 const CONTENT_MAINTENANCE_WORK_ITEM_TYPE = "67df87a8baf45c9c247ba778";
 const BLOCKING_ISSUE_WORK_ITEM_TYPE = "67df88cf656f61b9b41455d3";
 const OWNER_READBACK_DELAYS_MS = [0, 1_000, 2_000, 4_000, 8_000] as const;
-const AUTH_STATUS_RETRY_DELAYS_MS = [0, 500, 1_000, 2_000] as const;
+const AUTH_STATUS_RETRY_DELAYS_MS = [0, 500, 1_500] as const;
+const AUTH_STATUS_TIMEOUT_MS = 8_000;
 
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
@@ -1289,7 +1290,12 @@ export class MeegleIdentityManager {
       const delayMs = AUTH_STATUS_RETRY_DELAYS_MS[attempt]!;
       if (delayMs > 0) await this.pause(delayMs);
 
-      const result = await this.meegle(profile, ["auth", "status", "--format", "json"]);
+      const result = await this.meegle(
+        profile,
+        ["auth", "status", "--format", "json"],
+        false,
+        AUTH_STATUS_TIMEOUT_MS,
+      );
       const payload = tryParseJson(result.stdout);
       const reason = safeAuthReason(payload, result);
       lastReason = reason;
@@ -1492,12 +1498,13 @@ export class MeegleIdentityManager {
     profile: string,
     args: string[],
     requireSuccess = false,
+    timeoutMs?: number,
   ): Promise<ProcessResult> {
     const result = await this.runner(this.config.meegleIdentity.bin, [
       "--profile",
       profile,
       ...args,
-    ]);
+    ], timeoutMs);
     const failure = requireSuccess ? responseError(result) : undefined;
     if (failure) {
       throw new Error(

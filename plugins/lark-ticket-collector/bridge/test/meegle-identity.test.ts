@@ -1127,9 +1127,11 @@ test("unreachable auth service is not misreported as a missing login", async () 
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   let statusCalls = 0;
   let initCalls = 0;
-  const runner: ProcessRunner = async (_executable, args) => {
+  const statusTimeouts: Array<number | undefined> = [];
+  const runner: ProcessRunner = async (_executable, args, timeoutMs) => {
     if (args.includes("status")) {
       statusCalls += 1;
+      statusTimeouts.push(timeoutMs);
       return {
         exitCode: 2,
         stdout: JSON.stringify({
@@ -1153,7 +1155,8 @@ test("unreachable auth service is not misreported as a missing login", async () 
       senderName: "Alice",
       messageText: "创建客服工单",
     });
-    assert.equal(statusCalls, 4);
+    assert.equal(statusCalls, 3);
+    assert.deepEqual(statusTimeouts, [8_000, 8_000, 8_000]);
     assert.equal(initCalls, 0);
     assert.equal(result.kind, "blocked");
     assert.match(result.kind === "blocked" ? result.reply : "", /无需重新授权/u);
