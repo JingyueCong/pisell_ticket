@@ -56,7 +56,7 @@ shasum -a 256 -c MANIFEST.txt
 
 如需启用套件内的专用收单约定，将 `workspace/AGENTS.md` 复制到专用收单工作区根目录，并将 `workspace/configuration/*.json` 复制到该工作区的 `.ticket-collector/configuration/`。这些文件包含面向当前业务的空间和群配置；换团队或环境时必须先审阅并替换。
 
-生产群 ID 不写入 `runtime.json`：Yoko 交接群从 `YOKO_HANDOFF_CHAT_ID` 读取，内容维护制作人及复杂任务确认人来源群从 `CONTENT_PRODUCER_SOURCE_CHAT_ID` 读取。bridge 分别解析群名中的 `制作：` 与 `确认：` 段；未点名制作人时按群名轮班，员工明确点名时则在创建前校验该 Meegle 用户并优先指派（无需加入轮班名单，也不推进轮班游标），确认人不轮班且只在需要确认时写入。两者为空只会关闭对应自动化。`recipient_member_id` 默认留空；飞书 `open_id` 具有应用作用域，必须由实际发送应用在目标群动态解析 Yoko CLI，禁止保存或复用旧 `open_id`。
+生产群 ID 不写入 `runtime.json`：Yoko 交接群从 `YOKO_HANDOFF_CHAT_ID` 读取，内容维护制作人及复杂任务确认人来源群从 `CONTENT_PRODUCER_SOURCE_CHAT_ID` 读取。bridge 分别解析群名中的 `制作：` 与 `确认：` 段；未点名制作人时按群名轮班，员工明确点名时则在创建前校验该 Meegle 用户并优先指派（无需加入轮班名单，也不推进轮班游标）。员工明确说明需要确认人或明确指定确认人时，不分配制作人且不推进轮班，由确认人后续安排；该草稿保持此状态，直到员工明确改为不需要确认人。确认人不轮班且只在需要确认时写入。两者为空只会关闭对应自动化。`recipient_member_id` 默认留空；飞书 `open_id` 具有应用作用域，必须由实际发送应用在目标群动态解析 Yoko CLI，禁止保存或复用旧 `open_id`。
 
 ## 完全在飞书中使用
 

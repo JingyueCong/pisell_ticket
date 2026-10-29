@@ -52,6 +52,7 @@ import {
 import { MeegleAttachmentArchiver } from "./meegle-attachment-archiver.js";
 import { parseConfirmerNames, parseProducerNames } from "./producer-source.js";
 import {
+  resolveExplicitConfirmerRequirement,
   resolveExplicitProducer,
   resolveTrustedProducerSelection,
 } from "./producer-assignment.js";
@@ -949,10 +950,12 @@ export class LarkTicketService {
         verificationProducerSource.producerNames.length === 1
           ? verificationProducerSource.producerNames[0]
           : undefined;
+      const producerDelegatedToConfirmer =
+        verificationProducerSource?.selectionMode === "confirmer_assigns";
       const contentWorkItemId = contentMaintenanceProducerTarget(
         result,
         envelope.routePolicy,
-        Boolean(selectedProducer),
+        Boolean(selectedProducer) || producerDelegatedToConfirmer,
       );
       if (contentWorkItemId && producerSelectionError) {
         resultText = [
@@ -1012,6 +1015,53 @@ export class LarkTicketService {
             detail: {
               workItemId: contentWorkItemId,
               producerName: selectedProducer,
+              error: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
+            },
+          });
+        }
+      }
+      if (
+        contentWorkItemId &&
+        producerDelegatedToConfirmer &&
+        meegleIdentity &&
+        this.identityManager
+      ) {
+        try {
+          await this.identityManager.ensureContentMaintenanceProducerUnassigned({
+            identity: meegleIdentity,
+            workItemId: contentWorkItemId,
+            roleName: "制作人&交付人",
+          });
+          if (!/制作人.{0,12}(?:暂不分配|由确认人)/u.test(resultText)) {
+            resultText = [
+              resultText,
+              "",
+              "制作人暂不分配，将由确认人安排。",
+            ].join("\n");
+          }
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "content_producer_delegation_verification",
+            status: "succeeded",
+            detail: { workItemId: contentWorkItemId },
+          });
+        } catch (error) {
+          logger.warn("content.producer_delegation_failed", {
+            messageId: message.messageId,
+            workItemId: contentWorkItemId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          resultText = [
+            resultText,
+            "",
+            `注意：内容维护工单 #${contentWorkItemId} 已保留，但“制作人&交付人”未能回读确认为空；管理员只需清空该角色，不要重复建单。`,
+          ].join("\n");
+          this.store.recordOperation({
+            messageId: message.messageId,
+            step: "content_producer_delegation_verification",
+            status: "failed",
+            detail: {
+              workItemId: contentWorkItemId,
               error: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
             },
           });
@@ -1411,6 +1461,38 @@ export class LarkTicketService {
       }
       const producerRoster = parseProducerNames(chatName, source);
       const confirmerNames = parseConfirmerNames(chatName, source);
+      const explicitConfirmerRequirement = rotationConversationKey
+        ? resolveExplicitConfirmerRequirement(employeeMessage)
+        : undefined;
+      if (rotationConversationKey && explicitConfirmerRequirement === true) {
+        this.store.setProducerDelegatedToConfirmer({
+          sourceChatId: source.chatId,
+          conversationKey: rotationConversationKey,
+        });
+      } else if (
+        rotationConversationKey &&
+        explicitConfirmerRequirement === false
+      ) {
+        this.store.clearProducerDelegation(rotationConversationKey);
+      }
+      const producerDelegatedToConfirmer = Boolean(
+        rotationConversationKey &&
+          (explicitConfirmerRequirement === true ||
+            (explicitConfirmerRequirement === undefined &&
+              this.store.isProducerDelegatedToConfirmer({
+                sourceChatId: source.chatId,
+                conversationKey: rotationConversationKey,
+              }))),
+      );
+      if (producerDelegatedToConfirmer) {
+        return {
+          ...base,
+          chatName,
+          producerRoster,
+          confirmerNames,
+          selectionMode: "confirmer_assigns",
+        };
+      }
       const explicitProducer = rotationConversationKey
         ? resolveExplicitProducer(employeeMessage, producerRoster)
         : {};

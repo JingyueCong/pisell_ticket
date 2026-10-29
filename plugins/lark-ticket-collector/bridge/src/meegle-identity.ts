@@ -1140,6 +1140,101 @@ export class MeegleIdentityManager {
     };
   }
 
+  async ensureContentMaintenanceProducerUnassigned(input: {
+    identity: MeegleRequestIdentity;
+    workItemId: string;
+    roleName?: string;
+  }): Promise<{ roleKey: string; roleName: string }> {
+    const roleName = input.roleName?.trim() || "制作人&交付人";
+    const roleMetadata = await this.meegle(
+      input.identity.profile,
+      [
+        "workitem",
+        "meta-roles",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--work-item-type",
+        CONTENT_MAINTENANCE_WORK_ITEM_TYPE,
+        "--page-num",
+        "1",
+        "--role-query",
+        roleName,
+        "--format",
+        "json",
+      ],
+      true,
+    );
+    const roleKey = exactRoleKey(JSON.parse(roleMetadata.stdout) as unknown, roleName);
+    const query = async (): Promise<Set<string>> => {
+      const mql =
+        `SELECT \`work_item_id\`, \`__${mqlIdentifier(roleName)}\` ` +
+        `FROM \`${mqlIdentifier(this.config.meegleIdentity.projectKey)}\`.` +
+        `\`${CONTENT_MAINTENANCE_WORK_ITEM_TYPE}\` ` +
+        `WHERE \`work_item_id\` = ${input.workItemId} LIMIT 1`;
+      const result = await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "query",
+          "--project-key",
+          this.config.meegleIdentity.projectKey,
+          "--mql",
+          mql,
+          "--format",
+          "json",
+        ],
+        true,
+      );
+      return roleOwnerKeysFromQuery(
+        JSON.parse(result.stdout) as unknown,
+        input.workItemId,
+        roleKey,
+        roleName,
+      );
+    };
+
+    const currentOwners = await query();
+    if (currentOwners.size) {
+      const removableOwners = removableOwnerKeys(currentOwners, "");
+      if (removableOwners.length !== currentOwners.size) {
+        throw new Error("Content producer role readback did not expose removable user keys");
+      }
+      await this.meegle(
+        input.identity.profile,
+        [
+          "workitem",
+          "update",
+          "--project-key",
+          this.config.meegleIdentity.projectKey,
+          "--work-item-id",
+          input.workItemId,
+          "--role-operate",
+          JSON.stringify(
+            removableOwners.map((userKey) => ({
+              op: "remove",
+              role_key: roleKey,
+              user_keys: [userKey],
+            })),
+          ),
+          "--format",
+          "json",
+        ],
+        true,
+      );
+    }
+
+    let verifiedOwners = currentOwners;
+    for (const delayMs of OWNER_READBACK_DELAYS_MS) {
+      if (delayMs > 0) await this.pause(delayMs);
+      verifiedOwners = await query();
+      if (!verifiedOwners.size) return { roleKey, roleName };
+    }
+    throw new Error(
+      `Content producer must remain unassigned when confirmer delegates it ` +
+        `(actual=${[...verifiedOwners].join(",") || "none"})`,
+    );
+  }
+
   async resolveCustomerCrm(input: {
     identity: MeegleRequestIdentity;
     merchantName: string;

@@ -658,3 +658,46 @@ test("explicit producer assignment is sticky and does not advance rotation", () 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("confirmer delegation persists without consuming producer rotation", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-bridge-test-"));
+  const store = new BridgeStore(join(directory, "bridge.sqlite"));
+  const input = {
+    sourceChatId: "oc_producers",
+    producerNames: ["Annie", "Joy"],
+  };
+  try {
+    store.setProducerDelegatedToConfirmer({
+      sourceChatId: input.sourceChatId,
+      conversationKey: "delegated_draft",
+      now: 1,
+    });
+    assert.equal(
+      store.isProducerDelegatedToConfirmer({
+        sourceChatId: input.sourceChatId,
+        conversationKey: "delegated_draft",
+      }),
+      true,
+    );
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "normal_draft", now: 2 }),
+      "Annie",
+      "delegation must not consume the rotation slot",
+    );
+    store.clearProducerDelegation("delegated_draft");
+    assert.equal(
+      store.isProducerDelegatedToConfirmer({
+        sourceChatId: input.sourceChatId,
+        conversationKey: "delegated_draft",
+      }),
+      false,
+    );
+    assert.equal(
+      store.assignNextProducer({ ...input, conversationKey: "delegated_draft", now: 3 }),
+      "Joy",
+    );
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

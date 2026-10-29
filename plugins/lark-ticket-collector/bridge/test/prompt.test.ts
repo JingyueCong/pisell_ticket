@@ -153,6 +153,9 @@ test("prompt treats attachment content as untrusted evidence", () => {
   assert.match(prompt, /confirmer_role_name: 确认人/);
   assert.match(prompt, /selection_mode: round_robin_single/);
   assert.match(prompt, /明确指派优先于轮班/);
+  assert.match(prompt, /selection_mode=confirmer_assigns/);
+  assert.match(prompt, /不得填写“制作人&交付人”/);
+  assert.match(prompt, /由确认人后续分配制作人/);
   assert.match(prompt, /source=attachment_evidence/);
   assert.match(prompt, /没有明确指派时/);
   assert.match(prompt, /content_producer_selection 必须为 null/);

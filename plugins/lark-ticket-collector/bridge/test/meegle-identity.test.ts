@@ -1016,6 +1016,62 @@ test("explicit producer preflight resolves one active user without writing", asy
   }
 });
 
+test("confirmer delegation clears a default producer and verifies the role is empty", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let corrected = false;
+  const calls: string[][] = [];
+  const runner: ProcessRunner = async (_executable, args) => {
+    calls.push(args);
+    if (args.includes("meta-roles")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { roles: [{ role_key: "role_c17278", role_name: "制作人&交付人" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("query")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: {
+            rows: [{
+              work_item_id: "7132735915",
+              "__制作人&交付人": corrected ? [] : [{ user_key: "user_annie", name: "Annie" }],
+            }],
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("update")) corrected = true;
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .ensureContentMaintenanceProducerUnassigned({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        workItemId: "7132735915",
+      });
+    assert.deepEqual(result, {
+      roleKey: "role_c17278",
+      roleName: "制作人&交付人",
+    });
+    const update = calls.find((call) => call.includes("update"));
+    assert.ok(update);
+    const roleOperate = JSON.parse(
+      update?.[update.indexOf("--role-operate") + 1] ?? "[]",
+    ) as Array<{ op: string; role_key: string; user_keys: string[] }>;
+    assert.deepEqual(roleOperate, [
+      { op: "remove", role_key: "role_c17278", user_keys: ["user_annie"] },
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("per-user authorization binds a verified sender and reuses only that profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   let authenticated = false;

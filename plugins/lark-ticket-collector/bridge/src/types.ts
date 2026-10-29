@@ -54,7 +54,11 @@ export interface ContentMaintenanceProducerSource {
   producerRoster?: string[];
   confirmerNames: string[];
   confirmerRoleName?: string;
-  selectionMode?: "all" | "round_robin_single" | "explicit_single";
+  selectionMode?:
+    | "all"
+    | "round_robin_single"
+    | "explicit_single"
+    | "confirmer_assigns";
   fetchedAt: number;
   error?: string;
 }

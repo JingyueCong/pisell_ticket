@@ -200,6 +200,13 @@ export class BridgeStore {
       CREATE INDEX IF NOT EXISTS idx_producer_assignments_source
         ON producer_assignments(source_chat_id, updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS producer_confirmer_delegations (
+        conversation_key TEXT PRIMARY KEY,
+        source_chat_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS message_resources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         message_id TEXT NOT NULL,
@@ -455,6 +462,50 @@ export class BridgeStore {
 
       return selected;
     })();
+  }
+
+  setProducerDelegatedToConfirmer(input: {
+    sourceChatId: string;
+    conversationKey: string;
+    now?: number;
+  }): void {
+    const now = input.now ?? Date.now();
+    this.db.transaction(() => {
+      this.db
+        .prepare("DELETE FROM producer_assignments WHERE conversation_key = ?")
+        .run(input.conversationKey);
+      this.db
+        .prepare(`
+          INSERT INTO producer_confirmer_delegations (
+            conversation_key, source_chat_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?)
+          ON CONFLICT(conversation_key) DO UPDATE SET
+            source_chat_id = excluded.source_chat_id,
+            updated_at = excluded.updated_at
+        `)
+        .run(input.conversationKey, input.sourceChatId, now, now);
+    })();
+  }
+
+  clearProducerDelegation(conversationKey: string): void {
+    this.db
+      .prepare("DELETE FROM producer_confirmer_delegations WHERE conversation_key = ?")
+      .run(conversationKey);
+  }
+
+  isProducerDelegatedToConfirmer(input: {
+    sourceChatId: string;
+    conversationKey: string;
+  }): boolean {
+    return Boolean(
+      this.db
+        .prepare(`
+          SELECT 1
+          FROM producer_confirmer_delegations
+          WHERE conversation_key = ? AND source_chat_id = ?
+        `)
+        .get(input.conversationKey, input.sourceChatId),
+    );
   }
 
   completeMessage(messageId: string, responseText: string): void {
