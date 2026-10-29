@@ -7,6 +7,7 @@ import test from "node:test";
 import type { BridgeConfig } from "../src/config.js";
 import {
   isMeegleAuthorizationConfirmation,
+  isTemporaryIdentityVerificationFailure,
   MeegleIdentityManager,
   type ProcessRunner,
 } from "../src/meegle-identity.js";
@@ -67,6 +68,29 @@ test("recognizes only explicit Meegle authorization confirmations", () => {
   assert.equal(isMeegleAuthorizationConfirmation("@机器人 已授权"), true);
   assert.equal(isMeegleAuthorizationConfirmation("授权完成"), true);
   assert.equal(isMeegleAuthorizationConfirmation("请帮我创建工单"), false);
+});
+
+test("classifies temporary identity dependency failures without treating permission errors as outages", () => {
+  assert.equal(
+    isTemporaryIdentityVerificationFailure(
+      new Error("connect ETIMEDOUT 71.18.167.209:443"),
+    ),
+    true,
+  );
+  assert.equal(
+    isTemporaryIdentityVerificationFailure(
+      new Error("server unreachable: upstream returned 503"),
+    ),
+    true,
+  );
+  assert.equal(
+    isTemporaryIdentityVerificationFailure(new Error("403 forbidden")),
+    false,
+  );
+  assert.equal(
+    isTemporaryIdentityVerificationFailure(new Error("invalid token")),
+    false,
+  );
 });
 
 test("customer CRM lookup is read-only and uses the verified identity profile", async () => {
@@ -1118,6 +1142,65 @@ test("temporary auth status failures recover without starting a new authorizatio
     assert.equal(initCalls, 0);
     assert.deepEqual(pauses, [500]);
     assert.doesNotMatch(result.kind === "blocked" ? result.reply : "", /完成个人授权/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("temporary Lark identity lookup failures retry without requesting a new authorization", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  let larkCalls = 0;
+  let initCalls = 0;
+  const pauses: number[] = [];
+  const runner: ProcessRunner = async (executable, args) => {
+    if (executable === "lark-cli") {
+      larkCalls += 1;
+      if (larkCalls === 1) {
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: "connect ETIMEDOUT 71.18.167.209:443",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          data: { users: [{ open_id: "ou_alice", localized_name: "Alice" }] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("status")) {
+      return { exitCode: 0, stdout: JSON.stringify({ authenticated: true }), stderr: "" };
+    }
+    if (args.includes("init")) initCalls += 1;
+    if (args.includes("user") && args.includes("me")) {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ user_key: "meegle_alice", name_en: "Alice" }),
+        stderr: "",
+      };
+    }
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(
+      config(directory),
+      runner,
+      async (durationMs) => {
+        pauses.push(durationMs);
+      },
+    ).authorize({
+      senderId: "ou_alice",
+      senderName: "Alice",
+      messageText: "创建客服工单",
+    });
+    assert.equal(result.kind, "blocked");
+    assert.match(result.kind === "blocked" ? result.reply : "", /个人授权已验证/u);
+    assert.equal(larkCalls, 2);
+    assert.equal(initCalls, 0);
+    assert.deepEqual(pauses, [500]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

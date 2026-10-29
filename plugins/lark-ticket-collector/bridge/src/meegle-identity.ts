@@ -66,9 +66,17 @@ const BLOCKING_ISSUE_WORK_ITEM_TYPE = "67df88cf656f61b9b41455d3";
 const OWNER_READBACK_DELAYS_MS = [0, 1_000, 2_000, 4_000, 8_000] as const;
 const AUTH_STATUS_RETRY_DELAYS_MS = [0, 500, 1_500] as const;
 const AUTH_STATUS_TIMEOUT_MS = 8_000;
+const IDENTITY_DEPENDENCY_RETRY_DELAYS_MS = [0, 500] as const;
 
 export function isMeegleAuthorizationConfirmation(messageText: string): boolean {
   return /(已授权|授权完成|完成授权)/u.test(messageText);
+}
+
+export function isTemporaryIdentityVerificationFailure(error: unknown): boolean {
+  const reason = error instanceof Error ? error.message : String(error);
+  return /ETIMEDOUT|ECONNRESET|EAI_AGAIN|ECONNREFUSED|socket hang up|server unreachable|temporar|timeout|timed out|network|connection|\b5\d\d\b/iu.test(
+    reason,
+  );
 }
 
 export type ProcessRunner = (
@@ -721,9 +729,35 @@ export class MeegleIdentityManager {
     senderName?: string;
     messageText: string;
   }): Promise<IdentityGateResult> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const profile = this.profileFor(input.senderId);
-    return this.withProfileLock(profile, () => this.authorizeLocked(profile, input));
+    return this.withProfileLock(profile, async () => {
+      await mkdir(this.directory, { recursive: true, mode: 0o700 });
+      return this.authorizeWithDependencyRetry(profile, input);
+    });
+  }
+
+  private async authorizeWithDependencyRetry(
+    profile: string,
+    input: { senderId: string; senderName?: string; messageText: string },
+  ): Promise<IdentityGateResult> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < IDENTITY_DEPENDENCY_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delayMs = IDENTITY_DEPENDENCY_RETRY_DELAYS_MS[attempt]!;
+      if (delayMs > 0) await this.pause(delayMs);
+      try {
+        return await this.authorizeLocked(profile, input);
+      } catch (error) {
+        if (!isTemporaryIdentityVerificationFailure(error)) throw error;
+        lastError = error;
+        const finalAttempt = attempt === IDENTITY_DEPENDENCY_RETRY_DELAYS_MS.length - 1;
+        logger.warn(finalAttempt ? "meegle.identity_dependency_unavailable" : "meegle.identity_dependency_retry", {
+          profile,
+          attempt: attempt + 1,
+          error: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+        });
+      }
+    }
+    throw lastError;
   }
 
   private async authorizeLocked(
@@ -1462,7 +1496,13 @@ export class MeegleIdentityManager {
       "json",
     ]);
     if (result.exitCode !== 0) {
-      throw new Error("Unable to verify Lark sender identity");
+      const reason =
+        result.exitCode === null
+          ? "process timed out"
+          : safeAuthReason({}, result);
+      throw new Error(
+        `Unable to verify Lark sender identity${reason ? `: ${reason}` : ""}`,
+      );
     }
     const payload = JSON.parse(result.stdout) as unknown;
     const objects: Array<Record<string, unknown>> = [];

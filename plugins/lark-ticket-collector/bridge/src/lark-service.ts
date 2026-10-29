@@ -46,6 +46,7 @@ import { enforceDeterministicOutcome } from "./outcome-guard.js";
 import { normalizeMeegleWorkItemLinks } from "./work-item-links.js";
 import {
   isMeegleAuthorizationConfirmation,
+  isTemporaryIdentityVerificationFailure,
   MeegleIdentityManager,
 } from "./meegle-identity.js";
 import { MeegleAttachmentArchiver } from "./meegle-attachment-archiver.js";
@@ -371,10 +372,16 @@ export class LarkTicketService {
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        const reply = [
-          "暂时无法验证你的飞书项目身份，因此没有创建或修改任何工单。",
-          "请联系管理员检查个人授权与飞书通讯录读取权限后，再发送一条新的工单消息。",
-        ].join("\n");
+        const temporary = isTemporaryIdentityVerificationFailure(error);
+        const reply = temporary
+          ? [
+              "飞书项目服务暂时连接超时，本次没有创建或修改任何工单。",
+              "你的个人授权仍然有效，无需重新授权；请稍后重新发送本条消息。",
+            ].join("\n")
+          : [
+              "暂时无法验证你的飞书项目身份，因此没有创建或修改任何工单。",
+              "请联系管理员检查个人授权与飞书通讯录读取权限后，再发送一条新的工单消息。",
+            ].join("\n");
         this.store.failMessage(message.messageId, reason);
         this.store.recordOperation({
           messageId: message.messageId,
