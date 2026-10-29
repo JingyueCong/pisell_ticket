@@ -191,6 +191,8 @@ export class BridgeStore {
         source_chat_id TEXT NOT NULL,
         roster_json TEXT NOT NULL,
         producer_name TEXT NOT NULL,
+        assignment_mode TEXT NOT NULL DEFAULT 'round_robin'
+          CHECK(assignment_mode IN ('round_robin', 'explicit')),
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -272,6 +274,18 @@ export class BridgeStore {
         WHERE work_item_ids_json <> '[]'
       `);
     }
+
+    const producerAssignmentColumns = this.db
+      .prepare("PRAGMA table_info(producer_assignments)")
+      .all() as Array<{ name: string }>;
+    const producerAssignmentNames = new Set(
+      producerAssignmentColumns.map((column) => column.name),
+    );
+    if (!producerAssignmentNames.has("assignment_mode")) {
+      this.db.exec(
+        "ALTER TABLE producer_assignments ADD COLUMN assignment_mode TEXT NOT NULL DEFAULT 'round_robin' CHECK(assignment_mode IN ('round_robin', 'explicit'))",
+      );
+    }
   }
 
   claimMessage(input: {
@@ -339,39 +353,44 @@ export class BridgeStore {
     const roster = [
       ...new Set(input.producerNames.map((name) => name.trim()).filter(Boolean)),
     ];
-    if (!roster.length) return undefined;
-    const explicitProducer = input.explicitProducerName
+    const requestedExplicitProducer = input.explicitProducerName?.trim();
+    const explicitProducer = requestedExplicitProducer
       ? roster.find(
           (name) =>
-            name.toLocaleLowerCase() === input.explicitProducerName?.trim().toLocaleLowerCase(),
-        )
+            name.toLocaleLowerCase() === requestedExplicitProducer.toLocaleLowerCase(),
+        ) ?? requestedExplicitProducer
       : undefined;
-    if (input.explicitProducerName && !explicitProducer) {
-      throw new Error("Explicit producer must belong to the trusted roster");
-    }
+    if (!roster.length && !explicitProducer) return undefined;
     const rosterJson = JSON.stringify(roster);
     const now = input.now ?? Date.now();
 
     return this.db.transaction(() => {
       const existing = this.db
         .prepare(`
-          SELECT producer_name, source_chat_id, roster_json
+          SELECT producer_name, source_chat_id, roster_json, assignment_mode
           FROM producer_assignments
           WHERE conversation_key = ?
         `)
         .get(input.conversationKey) as
-        | { producer_name: string; source_chat_id: string; roster_json: string }
+        | {
+            producer_name: string;
+            source_chat_id: string;
+            roster_json: string;
+            assignment_mode: "round_robin" | "explicit";
+          }
         | undefined;
       if (explicitProducer) {
         this.db
           .prepare(`
             INSERT INTO producer_assignments (
-              conversation_key, source_chat_id, roster_json, producer_name, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+              conversation_key, source_chat_id, roster_json, producer_name,
+              assignment_mode, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'explicit', ?, ?)
             ON CONFLICT(conversation_key) DO UPDATE SET
               source_chat_id = excluded.source_chat_id,
               roster_json = excluded.roster_json,
               producer_name = excluded.producer_name,
+              assignment_mode = excluded.assignment_mode,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -386,7 +405,7 @@ export class BridgeStore {
       }
       if (
         existing?.source_chat_id === input.sourceChatId &&
-        roster.includes(existing.producer_name)
+        (existing.assignment_mode === "explicit" || roster.includes(existing.producer_name))
       ) {
         this.db
           .prepare(`
@@ -422,12 +441,14 @@ export class BridgeStore {
       this.db
         .prepare(`
           INSERT INTO producer_assignments (
-            conversation_key, source_chat_id, roster_json, producer_name, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?)
+            conversation_key, source_chat_id, roster_json, producer_name,
+            assignment_mode, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'round_robin', ?, ?)
           ON CONFLICT(conversation_key) DO UPDATE SET
             source_chat_id = excluded.source_chat_id,
             roster_json = excluded.roster_json,
             producer_name = excluded.producer_name,
+            assignment_mode = excluded.assignment_mode,
             updated_at = excluded.updated_at
         `)
         .run(input.conversationKey, input.sourceChatId, rosterJson, selected, now, now);

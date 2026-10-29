@@ -515,6 +515,7 @@ export class LarkTicketService {
         this.readContentMaintenanceProducerSource(
           producerRotationKey,
           message.content,
+          meegleIdentity,
         ),
         automaticVisitRecord
           ? this.readVisitRecord(message)
@@ -1388,6 +1389,7 @@ export class LarkTicketService {
   private async readContentMaintenanceProducerSource(
     rotationConversationKey?: string,
     employeeMessage = "",
+    meegleIdentity?: MeegleRequestIdentity,
   ): Promise<
     ContentMaintenanceProducerSource | undefined
   > {
@@ -1409,10 +1411,9 @@ export class LarkTicketService {
       }
       const producerRoster = parseProducerNames(chatName, source);
       const confirmerNames = parseConfirmerNames(chatName, source);
-      const explicitProducer = resolveExplicitProducer(
-        employeeMessage,
-        producerRoster,
-      );
+      const explicitProducer = rotationConversationKey
+        ? resolveExplicitProducer(employeeMessage, producerRoster)
+        : {};
       if (explicitProducer.error) {
         return {
           ...base,
@@ -1422,6 +1423,35 @@ export class LarkTicketService {
           selectionMode: "all",
           error: explicitProducer.error,
         };
+      }
+      if (explicitProducer.producerName) {
+        if (!meegleIdentity || !this.identityManager) {
+          return {
+            ...base,
+            chatName,
+            producerRoster,
+            confirmerNames,
+            selectionMode: "all",
+            error: `cannot validate explicitly assigned producer: ${explicitProducer.producerName}`,
+          };
+        }
+        try {
+          await this.identityManager.resolveContentMaintenanceProducer({
+            identity: meegleIdentity,
+            producerName: explicitProducer.producerName,
+          });
+        } catch (error) {
+          return {
+            ...base,
+            chatName,
+            producerRoster,
+            confirmerNames,
+            selectionMode: "all",
+            error:
+              `explicit producer must match exactly one active Meegle user: ` +
+              `${explicitProducer.producerName} (${error instanceof Error ? error.message : String(error)})`,
+          };
+        }
       }
       const selectedProducer = rotationConversationKey
         ? this.store.assignNextProducer({

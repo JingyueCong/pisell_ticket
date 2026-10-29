@@ -1115,6 +1115,31 @@ export class MeegleIdentityManager {
     );
   }
 
+  async resolveContentMaintenanceProducer(input: {
+    identity: MeegleRequestIdentity;
+    producerName: string;
+  }): Promise<Pick<ContentProducerAssignment, "producerName" | "producerUserKey">> {
+    const producerName = input.producerName.trim();
+    const userSearch = await this.meegle(
+      input.identity.profile,
+      [
+        "user",
+        "search",
+        "--project-key",
+        this.config.meegleIdentity.projectKey,
+        "--user-keys",
+        JSON.stringify([producerName]),
+        "--format",
+        "json",
+      ],
+      true,
+    );
+    return {
+      producerName,
+      producerUserKey: exactUserKey(JSON.parse(userSearch.stdout) as unknown, producerName),
+    };
+  }
+
   async resolveCustomerCrm(input: {
     identity: MeegleRequestIdentity;
     merchantName: string;

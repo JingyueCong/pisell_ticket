@@ -79,8 +79,9 @@ function explicitRequestedName(text: string): string | undefined {
 }
 
 /**
- * Resolve only an employee-authored explicit producer assignment. The returned
- * name always preserves the trusted roster spelling and casing.
+ * Resolve only an employee-authored explicit producer assignment. A roster
+ * match preserves its trusted spelling and casing; an explicitly named person
+ * outside the rotation roster is returned for Meegle identity preflight.
  */
 export function resolveExplicitProducer(
   text: string,
@@ -108,10 +109,7 @@ export function resolveExplicitProducer(
     (name) => normalizedName(name) === normalizedName(requestedName),
   );
   if (rosterName) return { producerName: rosterName, requestedName };
-  return {
-    requestedName,
-    error: `explicit producer is not in the trusted roster: ${requestedName}`,
-  };
+  return { producerName: requestedName, requestedName };
 }
 
 export interface TrustedProducerResolution {
@@ -142,6 +140,16 @@ export function resolveTrustedProducerSelection(input: {
       : {};
   }
 
+  if (source.selectionMode === "explicit_single") {
+    if (
+      !trustedSelected ||
+      normalizedName(trustedSelected) !== normalizedName(input.reported.producerName)
+    ) {
+      return { error: "reported producer conflicts with the employee text assignment" };
+    }
+    return { producerName: trustedSelected, selectionMode: "explicit_single" };
+  }
+
   const rosterMatch = source.producerRoster?.find(
     (name) => normalizedName(name) === normalizedName(input.reported!.producerName),
   );
@@ -149,15 +157,6 @@ export function resolveTrustedProducerSelection(input: {
     return {
       error: `reported producer is not in the trusted roster: ${input.reported.producerName}`,
     };
-  }
-  if (source.selectionMode === "explicit_single") {
-    if (
-      trustedSelected &&
-      normalizedName(trustedSelected) !== normalizedName(rosterMatch)
-    ) {
-      return { error: "reported producer conflicts with the employee text assignment" };
-    }
-    return { producerName: rosterMatch, selectionMode: "explicit_single" };
   }
   if (input.reported.source === "trusted_default") {
     if (

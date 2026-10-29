@@ -983,6 +983,39 @@ test("content producer verification stops on ambiguous active users", async () =
   }
 });
 
+test("explicit producer preflight resolves one active user without writing", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
+  const calls: string[][] = [];
+  const runner: ProcessRunner = async (_executable, args) => {
+    calls.push(args);
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        data: { users: [{ user_key: "user_penn", name: "Penn" }] },
+      }),
+      stderr: "",
+    };
+  };
+
+  try {
+    const result = await new MeegleIdentityManager(config(directory), runner)
+      .resolveContentMaintenanceProducer({
+        identity: { profile: "lark-alice", userKey: "meegle_alice", name: "Alice" },
+        producerName: "Penn",
+      });
+    assert.deepEqual(result, {
+      producerName: "Penn",
+      producerUserKey: "user_penn",
+    });
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0]?.includes("search"));
+    assert.equal(calls[0]?.[calls[0]?.indexOf("--profile") + 1], "lark-alice");
+    assert.equal(calls.some((call) => call.includes("update")), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("per-user authorization binds a verified sender and reuses only that profile", async () => {
   const directory = mkdtempSync(join(tmpdir(), "ticket-identity-"));
   let authenticated = false;

@@ -28,14 +28,35 @@ test("generic producer questions do not look like assignments", () => {
   );
 });
 
-test("unknown or multiple explicit producers are rejected instead of rotating", () => {
-  assert.match(
-    resolveExplicitProducer("制作人：Mika", roster).error ?? "",
-    /not in the trusted roster/,
-  );
+test("an explicitly assigned producer may be outside the rotation roster", () => {
+  assert.deepEqual(resolveExplicitProducer("制作人：Mika", roster), {
+    producerName: "Mika",
+    requestedName: "Mika",
+  });
+});
+
+test("multiple explicit producers are rejected instead of rotating", () => {
   assert.match(
     resolveExplicitProducer("安排给 Annie 和 Joy", roster).error ?? "",
     /multiple producers/,
+  );
+});
+
+test("employee text assignment outside the roster remains authoritative", () => {
+  const source = {
+    chatId: "oc_producers",
+    producerNames: ["Penn"],
+    producerRoster: ["Annie", "Joy"],
+    confirmerNames: [],
+    selectionMode: "explicit_single" as const,
+    fetchedAt: 1,
+  };
+  assert.deepEqual(
+    resolveTrustedProducerSelection({
+      source,
+      reported: { producerName: "penn", source: "employee_text" },
+    }),
+    { producerName: "Penn", selectionMode: "explicit_single" },
   );
 });
 
@@ -78,4 +99,3 @@ test("trusted default cannot silently replace the bridge rotation", () => {
   });
   assert.match(resolution.error ?? "", /conflicts with the bridge rotation/);
 });
-

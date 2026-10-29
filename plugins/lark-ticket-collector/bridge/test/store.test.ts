@@ -604,14 +604,14 @@ test("explicit producer assignment is sticky and does not advance rotation", () 
   const store = new BridgeStore(join(directory, "bridge.sqlite"));
   const input = {
     sourceChatId: "oc_producers",
-    producerNames: ["Annie", "Penn", "Joy"],
+    producerNames: ["Annie", "Joy"],
   };
   try {
     assert.equal(
       store.assignNextProducer({
         ...input,
         conversationKey: "explicit_draft",
-        explicitProducerName: "penn",
+        explicitProducerName: "Penn",
         now: 1,
       }),
       "Penn",
@@ -644,12 +644,14 @@ test("explicit producer assignment is sticky and does not advance rotation", () 
       "Joy",
       "a later explicit correction replaces the sticky assignment",
     );
-    assert.throws(() =>
+    assert.equal(
       store.assignNextProducer({
         ...input,
-        conversationKey: "invalid_draft",
-        explicitProducerName: "Unknown",
+        conversationKey: "external_draft",
+        explicitProducerName: "Mika",
       }),
+      "Mika",
+      "an explicit producer may be outside the rotation roster after identity preflight",
     );
   } finally {
     store.close();
